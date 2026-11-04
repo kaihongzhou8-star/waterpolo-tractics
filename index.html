@@ -3,9 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <title>水球战术模拟器</title>
+<meta name="description" content="2D 水球战术模拟与讲解：拖拽球员、画线、文字指令与一键战术">
+
+<!-- ===== PWA：添加到主屏幕后全屏运行 ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1620">
+<meta name="mobile-web-app-capable" content="yes">                           <!-- Android / Chrome -->
+<meta name="apple-mobile-web-app-capable" content="yes">                     <!-- iOS Safari：以独立 App 方式启动（无地址栏） -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="水球战术板">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <style>
   :root {
@@ -2312,6 +2322,14 @@
   initDefaults();
   addEntry('使用说明', '默认全场视角：双方各6名场上球员+门将（号码1–6，门将红帽无数字）；蓝队为3-3防守阵型，白队在外围准备进攻。右侧面板“视角与人数”里可切换到半场（左侧防守半场），球员会自动重新分布到左半场。点击“经典战术”按钮可一键播放整套战术（会自动切回全场）；也可以在“文字战术指令”里输入战术指令，支持多路点、“绕过…”和“同时”，球员会沿平滑曲线游动并留下虚线轨迹，这里会同步生成战术讲解。', 'sys');
 })();
+</script>
+<script>
+  // 注册 Service Worker（需要 https 或 localhost；GitHub Pages 默认是 https）
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('Service Worker 注册失败：', err));
+    });
+  }
 </script>
 </body>
 </html>

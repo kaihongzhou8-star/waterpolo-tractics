@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "水球战术模拟器",
+  "short_name": "水球战术板",
+  "description": "2D 水球战术模拟与讲解：拖拽球员、画线、文字指令与一键战术，支持离线使用。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#0d1620",
+  "theme_color": "#0d1620",
+  "categories": ["sports", "education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
