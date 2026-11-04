@@ -230,6 +230,64 @@
     #panel { padding: 56px 8px 8px; }
     #brand { padding: 4px 8px; }
   }
+
+  /* ===== “安装 App”入口按钮 + 指引弹窗 ===== */
+  .install-btn { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px;
+    padding: 11px 14px; border: 0; border-radius: 10px; font-size: 14.5px; font-weight: 700; letter-spacing: .3px; color: #04251a; cursor: pointer;
+    background: linear-gradient(135deg, #2fe39a 0%, #19c37d 55%, #12a56a 100%); box-shadow: 0 4px 16px rgba(25,195,125,.35);
+    transition: transform .12s, box-shadow .15s, filter .15s; }
+  .install-btn:hover { filter: brightness(1.06); box-shadow: 0 6px 20px rgba(25,195,125,.5); }
+  .install-btn:active { transform: scale(.985); }
+  .install-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  #installModal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    background: rgba(5, 10, 18, .72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; visibility: hidden; transition: opacity .22s, visibility .22s; }
+  #installModal.open { opacity: 1; visibility: visible; }
+  .im-card { position: relative; width: min(500px, 100%); max-height: min(720px, 100%); display: flex; flex-direction: column; overflow: hidden;
+    border-radius: 18px; background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(0,0,0,.65);
+    transform: translateY(14px) scale(.98); transition: transform .25s cubic-bezier(.2,.9,.3,1.1); }
+  #installModal.open .im-card { transform: none; }
+  .im-head { display: flex; align-items: center; gap: 12px; padding: 16px 16px 12px 20px; }
+  .im-head .logo { width: 42px; height: 42px; border-radius: 10px; flex: 0 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .im-head h2 { margin: 0; font-size: 17px; line-height: 1.25; }
+  .im-head p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .im-close { margin-left: auto; flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1;
+    background: rgba(255,255,255,.06); border-color: transparent; }
+  .im-close:hover { background: rgba(255,255,255,.14); }
+  .im-tabs { display: flex; gap: 6px; margin: 0 20px; padding: 4px; border-radius: 12px; background: rgba(0,0,0,.3); }
+  .im-tab { flex: 1 1 0; min-height: 42px; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: #9fb4c7; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px; transition: background .15s, color .15s; }
+  .im-tab:hover { background: rgba(255,255,255,.06); }
+  .im-tab[aria-selected="true"] { background: #1f8f5f; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+  .im-tab .me { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; background: rgba(255,255,255,.2); }
+  .im-body { padding: 14px 20px 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .im-panel[hidden] { display: none; }
+  .im-lead { margin: 0 0 12px; font-size: 13.5px; line-height: 1.65; color: #d4e0eb; }
+  .im-lead b { color: #fff; }
+  .im-steps { list-style: none; margin: 0; padding: 0; counter-reset: st; display: flex; flex-direction: column; gap: 10px; }
+  .im-steps li { counter-increment: st; position: relative; padding: 11px 12px 11px 50px; border-radius: 12px; background: rgba(255,255,255,.045);
+    border: 1px solid var(--line); font-size: 13.5px; line-height: 1.6; }
+  .im-steps li::before { content: counter(st); position: absolute; left: 12px; top: 11px; width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; background: var(--accent); color: #04251a; }
+  .im-steps kbd { display: inline-block; padding: 0 7px; border-radius: 6px; background: #22384d; border: 1px solid #3b5873; font: inherit; font-weight: 700; color: #fff; white-space: nowrap; }
+  .im-steps svg.inl { width: 1.25em; height: 1.25em; vertical-align: -0.25em; }
+  .im-fig { margin: 8px 0 0; display: block; width: 100%; max-width: 300px; }
+  .im-tip { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.6; color: #ffd9a8;
+    background: rgba(255,154,31,.1); border: 1px solid rgba(255,154,31,.35); }
+  .im-tip.alert { color: #ffc2bd; background: rgba(229,83,75,.14); border-color: rgba(229,83,75,.5); font-weight: 600; }
+  .im-state { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.55; background: rgba(25,195,125,.12); border: 1px solid rgba(25,195,125,.4); color: #8af0c4; }
+  .im-state[hidden] { display: none; }
+  #imNativeInstall { width: 100%; margin-top: 12px; }
+  #imNativeInstall[hidden] { display: none; }
+  @media (max-width: 480px) {
+    #installModal { align-items: flex-end; padding: 0; }
+    .im-card { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; transform: translateY(40px); padding-bottom: env(safe-area-inset-bottom); }
+    .im-tabs, .im-body { margin-left: 14px; margin-right: 14px; }
+    .im-tabs { margin: 0 14px; }
+    .im-body { padding: 14px 0 20px; margin: 0 14px; }
+  }
 </style>
 </head>
 <body>
@@ -244,6 +302,81 @@
     <span class="sub">2D Tactics Board</span>
   </div>
   <div id="hint">拖动球员或水球可调整位置</div>
+
+  <!-- ===== 安装 App 指引弹窗 ===== -->
+  <div id="installModal" role="dialog" aria-modal="true" aria-labelledby="imTitle" aria-hidden="true">
+    <div class="im-card">
+      <div class="im-head">
+        <img class="logo" src="icons/icon-192.png" alt="">
+        <div>
+          <h2 id="imTitle">安装手机/平板 App</h2>
+          <p>添加到主屏幕，全屏使用，断网也能打开</p>
+        </div>
+        <button type="button" class="im-close" id="imClose" aria-label="关闭">✕</button>
+      </div>
+
+      <div class="im-tabs" role="tablist" aria-label="选择设备系统">
+        <button class="im-tab" role="tab" id="tabAndroid" aria-controls="panelAndroid" aria-selected="true" type="button">🤖 安卓 Android <span class="me" hidden>你的设备</span></button>
+        <button class="im-tab" role="tab" id="tabIOS" aria-controls="panelIOS" aria-selected="false" tabindex="-1" type="button">🍎 苹果 iOS <span class="me" hidden>你的设备</span></button>
+      </div>
+
+      <div class="im-body">
+        <div class="im-state" id="imStandalone" hidden>✅ 你现在已经是以 App 方式运行了，无需再安装。</div>
+        <div class="im-tip alert" id="imInApp" hidden>⚠️ 检测到你正在微信 / QQ 等内置浏览器中打开，这里无法安装。请点击右上角 <b>⋯</b> 或分享菜单，选择“<b>在浏览器中打开</b>”（iPhone/iPad 请选 Safari，安卓请选 Chrome），再按下面步骤操作。</div>
+
+        <!-- 安卓 -->
+        <section class="im-panel" id="panelAndroid" role="tabpanel" aria-labelledby="tabAndroid">
+          <p class="im-lead">如果您使用的是<b>安卓手机或平板</b>（推荐使用 <b>Chrome 浏览器</b>），请按以下步骤安装：</p>
+          <ol class="im-steps">
+            <li>点击浏览器右上角的 <kbd>⋮</kbd>（三个点）菜单。
+              <!-- 示意图：Chrome 菜单 -->
+              <svg class="im-fig" viewBox="0 0 300 168" role="img" aria-label="安卓 Chrome 菜单示意图">
+                <rect x="0" y="0" width="300" height="168" rx="12" fill="#0b141e"/>
+                <rect x="10" y="10" width="280" height="26" rx="13" fill="#1b2a39"/>
+                <circle cx="272" cy="23" r="3" fill="#cfe0f0"/><circle cx="272" cy="23" r="0"/>
+                <g fill="#cfe0f0"><circle cx="270" cy="17" r="2.2"/><circle cx="270" cy="23" r="2.2"/><circle cx="270" cy="29" r="2.2"/></g>
+                <circle cx="270" cy="23" r="13" fill="none" stroke="#19c37d" stroke-width="2"/>
+                <rect x="140" y="42" width="150" height="118" rx="10" fill="#1b2a39" stroke="#33495e"/>
+                <g font-size="11" fill="#9fb4c7" font-family="sans-serif">
+                  <text x="154" y="62">新标签页</text><text x="154" y="82">书签</text>
+                </g>
+                <rect x="146" y="92" width="138" height="24" rx="6" fill="#19c37d"/>
+                <text x="154" y="108" font-size="11.5" font-weight="700" fill="#04251a" font-family="sans-serif">安装应用 / 添加到主屏幕</text>
+                <g font-size="11" fill="#9fb4c7" font-family="sans-serif"><text x="154" y="136">分享…</text><text x="154" y="152">设置</text></g>
+              </svg>
+            </li>
+            <li>选择 <kbd>安装应用</kbd> 或 <kbd>添加到主屏幕</kbd>。</li>
+            <li>确认安装后，即可在桌面找到<b>战术板图标</b>。</li>
+          </ol>
+          <button type="button" class="install-btn" id="imNativeInstall" hidden>⚡ 一键安装（当前浏览器支持）</button>
+          <div class="im-tip">不同品牌的浏览器菜单文字可能略有差异；如果看不到“安装应用”，请改用 Chrome 打开本页。</div>
+        </section>
+
+        <!-- 苹果 -->
+        <section class="im-panel" id="panelIOS" role="tabpanel" aria-labelledby="tabIOS" hidden>
+          <p class="im-lead">如果您使用的是 <b>iPhone 或 iPad</b>，请务必使用系统自带的 <b>Safari 浏览器</b> 打开本网页。</p>
+          <ol class="im-steps">
+            <li>点击屏幕底部中间的 <kbd>分享</kbd> 按钮
+              （<svg class="inl" viewBox="0 0 24 24" fill="none" stroke="#7fc4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M6 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1"/></svg> 一个方框带向上箭头的图标）。iPad 的分享按钮在屏幕右上角。</li>
+            <li>向下滑动菜单，找到并点击 <kbd>添加到主屏幕</kbd>。
+              <svg class="im-fig" viewBox="0 0 300 150" role="img" aria-label="iOS 分享菜单示意图">
+                <rect x="0" y="0" width="300" height="150" rx="12" fill="#0b141e"/>
+                <rect x="20" y="12" width="260" height="126" rx="14" fill="#1b2a39" stroke="#33495e"/>
+                <g font-size="11.5" fill="#9fb4c7" font-family="sans-serif">
+                  <text x="36" y="38">拷贝</text><text x="36" y="62">添加到阅读列表</text></g>
+                <rect x="26" y="72" width="248" height="28" rx="7" fill="#19c37d"/>
+                <text x="36" y="91" font-size="12.5" font-weight="700" fill="#04251a" font-family="sans-serif">添加到主屏幕</text>
+                <text x="262" y="91" font-size="16" fill="#04251a" font-family="sans-serif" text-anchor="end">＋</text>
+                <g font-size="11.5" fill="#9fb4c7" font-family="sans-serif"><text x="36" y="122">标记</text></g>
+              </svg>
+            </li>
+            <li>点击右上角的 <kbd>添加</kbd>。回到桌面即可看到 <b>App</b>。</li>
+          </ol>
+          <div class="im-tip">注意：微信、QQ 等内置浏览器无法直接安装，请点击右上角选择“<b>在浏览器中打开</b>”。</div>
+        </section>
+      </div>
+    </div>
+  </div>
 
   <!-- 竖屏手机：横屏提示 -->
   <div id="rotateTip" role="dialog" aria-modal="true" aria-label="横屏提示">
@@ -266,6 +399,7 @@
   <aside id="panel" aria-label="控制面板">
     <div id="panelScroll">
       <div id="sheetHead"><b>🎛️ 控制面板</b><button id="sheetClose" type="button" aria-label="关闭面板">✕ 关闭</button></div>
+      <button id="installBtn" class="install-btn" type="button" aria-haspopup="dialog" aria-controls="installModal">📱 安装手机/平板 App</button>
 
       <details class="sec" open>
         <summary><span class="ic">🎛️</span>视角与人数</summary>
@@ -2330,6 +2464,93 @@
       navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('Service Worker 注册失败：', err));
     });
   }
+</script>
+<script>
+  // ===== “安装 App”指引弹窗 =====
+  (() => {
+    const $ = id => document.getElementById(id);
+    const modal = $('installModal'), openBtn = $('installBtn'), closeBtn = $('imClose');
+    const tabs = { android: $('tabAndroid'), ios: $('tabIOS') };
+    const panels = { android: $('panelAndroid'), ios: $('panelIOS') };
+    const nativeBtn = $('imNativeInstall');
+
+    // ---- 设备检测 ----
+    const ua = navigator.userAgent || '';
+    // iPadOS 13+ 的 Safari 会伪装成 Mac，用触点数区分
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/i.test(ua);
+    const inApp = /MicroMessenger|MQQBrowser|QQ\/|Weibo|AlipayClient|DingTalk|Line\/|FBAN|FBAV|Instagram/i.test(ua);
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    // ---- 标签页切换 ----
+    function selectTab(name) {
+      for (const k of Object.keys(tabs)) {
+        const on = k === name;
+        tabs[k].setAttribute('aria-selected', String(on));
+        tabs[k].tabIndex = on ? 0 : -1;
+        panels[k].hidden = !on;
+      }
+    }
+    Object.entries(tabs).forEach(([k, el]) => el.addEventListener('click', () => selectTab(k)));
+    // 方向键在两个标签之间切换（无障碍）
+    $('installModal').querySelector('[role=tablist]').addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const next = tabs.android.getAttribute('aria-selected') === 'true' ? 'ios' : 'android';
+      selectTab(next); tabs[next].focus();
+    });
+    // 在“你的设备”对应的标签上打上小徽标
+    const mine = isIOS ? 'ios' : (isAndroid ? 'android' : null);
+    if (mine) tabs[mine].querySelector('.me').hidden = false;
+
+    // ---- Android Chrome：捕获 beforeinstallprompt，提供“一键安装” ----
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPrompt = e;
+      nativeBtn.hidden = false;
+    });
+    nativeBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      try { await deferredPrompt.userChoice; } catch (e) {}
+      deferredPrompt = null;
+      nativeBtn.hidden = true;
+    });
+    window.addEventListener('appinstalled', () => { nativeBtn.hidden = true; closeModal(); });
+
+    // ---- 打开 / 关闭 ----
+    let lastFocus = null;
+    function openModal() {
+      lastFocus = document.activeElement;
+      selectTab(isIOS ? 'ios' : 'android');            // iOS 设备默认 iOS 指引，其余（含安卓、电脑）默认安卓指引
+      $('imStandalone').hidden = !standalone;
+      $('imInApp').hidden = !inApp;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      setTimeout(() => closeBtn.focus(), 50);
+    }
+    function closeModal() {
+      if (!modal.classList.contains('open')) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    openBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });   // 点击遮罩关闭
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    // 简单的焦点陷阱：Tab 不会跑到弹窗后面的页面
+    modal.addEventListener('keydown', e => {
+      if (e.key !== 'Tab') return;
+      const f = [...modal.querySelectorAll('button:not([hidden]):not([disabled]), [tabindex="0"]')].filter(el => el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    // 以独立 App 方式运行时，按钮文案改成“已安装”提示（入口仍然保留）
+    if (standalone) openBtn.textContent = '✅ 已作为 App 运行';
+  })();
 </script>
 </body>
 </html>

@@ -7,7 +7,7 @@
  *  - 本站静态资源（图标、manifest 等）：缓存优先，同时后台刷新（stale-while-revalidate）。
  *  - 跨域的 GSAP（CDN）：首次联网时自动缓存，之后离线也能用；没有缓存时页面自带的备用动画仍可工作。
  */
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = 'waterpolo-tactics-' + CACHE_VERSION;
 
 // 相对 service-worker.js 所在目录（GitHub Pages 项目站点的子路径也适用）
