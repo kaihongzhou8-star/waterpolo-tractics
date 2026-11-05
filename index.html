@@ -11,13 +11,25 @@
 <meta name="theme-color" content="#0d1620">
 <meta name="mobile-web-app-capable" content="yes">                           <!-- Android / Chrome -->
 <meta name="apple-mobile-web-app-capable" content="yes">                     <!-- iOS Safari：以独立 App 方式启动（无地址栏） -->
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">   <!-- 状态栏透明，内容铺满到屏幕顶部（页面已用 env(safe-area-inset-*) 避开刘海） -->
+<meta name="application-name" content="水球战术板">
+<meta name="msapplication-TileColor" content="#0d1620">
 <meta name="apple-mobile-web-app-title" content="水球战术板">
 <meta name="format-detection" content="telephone=no">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>   <!-- 循迹动画：球员沿手绘曲线运动 -->
+<!-- GSAP：优先读本地 vendor/ 文件（桌面版 / 离线打包必备），本地没有时自动回退到 CDN；两者都没有则使用内置备用动画 -->
+<script>
+  (function () {
+    var CDN = 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/';
+    function load(local, cdn, ready) {
+      document.write('<script src="' + local + '"><\/script>');
+      document.write('<script>' + ready + ' || document.write(\'<script src="' + cdn + '"><\\/script>\');<\/script>');
+    }
+    load('vendor/gsap.min.js', CDN + 'gsap.min.js', 'window.gsap');
+    load('vendor/MotionPathPlugin.min.js', CDN + 'MotionPathPlugin.min.js', 'window.MotionPathPlugin');   // 循迹动画：球员沿手绘曲线运动
+  })();
+</script>
 <style>
   :root {
     --bg: #0d1620; --panel: rgba(18, 29, 42, .88); --panel-solid: #121d2a; --line: rgba(120, 160, 200, .22);
@@ -26,7 +38,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior: none;
-    -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; background: var(--bg); color: var(--text);
+    -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; }
 
   /* ===== 全屏舞台：画布居中并撑满剩余空间 ===== */
@@ -391,6 +403,7 @@
     background: rgba(255,255,255,.07); border: 1px solid rgba(120,170,220,.38); transition: background .15s, border-color .15s, transform .12s; }
   .dock-btn:hover { background: rgba(255,255,255,.13); border-color: rgba(150,200,250,.6); }
   .dock-btn:active { transform: scale(.985); }
+  .dock-btn[hidden] { display: none; }
   .dock-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (max-width: 768px) and (orientation: portrait) {
     #panelScroll { padding-bottom: 10px; }
@@ -3753,7 +3766,10 @@
 </script>
 <script>
   // 注册 Service Worker（需要 https 或 localhost；GitHub Pages 默认是 https）
-  if ('serviceWorker' in navigator) {
+  // 桌面版（Tauri 等壳应用）自带全部文件，不需要 Service Worker，也不需要“安装 App”入口
+  const IN_SHELL = !!(window.__TAURI__ || window.__TAURI_INTERNALS__ || location.protocol === 'tauri:' || location.hostname === 'tauri.localhost' || location.protocol === 'file:');
+  if (IN_SHELL) { const ib = document.getElementById('installBtn'); if (ib) ib.hidden = true; }
+  if ('serviceWorker' in navigator && !IN_SHELL) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js').catch(err => console.warn('Service Worker 注册失败：', err));
     });
