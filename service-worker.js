@@ -7,7 +7,7 @@
  *  - 本站静态资源（图标、manifest 等）：缓存优先，同时后台刷新（stale-while-revalidate）。
  *  - 跨域的 GSAP（CDN）：首次联网时自动缓存，之后离线也能用；没有缓存时页面自带的备用动画仍可工作。
  */
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v9';
 const CACHE_NAME = 'waterpolo-tactics-' + CACHE_VERSION;
 
 // 相对 service-worker.js 所在目录（GitHub Pages 项目站点的子路径也适用）
@@ -22,13 +22,15 @@ const PRECACHE = [
   './icons/favicon-32.png',
 ];
 const GSAP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js';
+const MOTIONPATH_URL = 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js';
+const CDN_URLS = [GSAP_URL, MOTIONPATH_URL];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(PRECACHE);
     // GSAP 是跨域脚本：用 no-cors 取回“不透明响应”，<script> 标签可以直接使用；失败不影响安装
-    try { await cache.add(new Request(GSAP_URL, { mode: 'no-cors' })); } catch (e) {}
+    for (const u of CDN_URLS) { try { await cache.add(new Request(u, { mode: 'no-cors' })); } catch (e) {} }
     await self.skipWaiting();
   })());
 });
@@ -62,7 +64,7 @@ self.addEventListener('fetch', event => {
   }
 
   // 2) 本站资源 与 GSAP CDN：缓存优先 + 后台刷新
-  if (url.origin === self.location.origin || url.href === GSAP_URL) {
+  if (url.origin === self.location.origin || CDN_URLS.includes(url.href)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
       const cached = await cache.match(req);

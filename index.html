@@ -17,6 +17,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>   <!-- 循迹动画：球员沿手绘曲线运动 -->
 <style>
   :root {
     --bg: #0d1620; --panel: rgba(18, 29, 42, .88); --panel-solid: #121d2a; --line: rgba(120, 160, 200, .22);
@@ -68,6 +69,8 @@
   .tabbar button[aria-pressed="true"], .tabbar button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent); color: #06231a; }
   .tabbar button:disabled { color: #5d7186; background: rgba(255,255,255,.03); cursor: not-allowed; }
   .tabbar button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+
+  .formation-bar button { font-size: 13px; }
 
   /* ===== 总开关 ===== */
   #panelToggle { position: fixed; top: 14px; right: 16px; z-index: 30; display: inline-flex; align-items: center; gap: 8px;
@@ -288,6 +291,112 @@
     .im-tabs { margin: 0 14px; }
     .im-body { padding: 14px 0 20px; margin: 0 14px; }
   }
+
+  /* ===== 战术画板：画线模式、归属小菜单、悬浮“播放”按钮 ===== */
+  #app.draw-mode #hint { color: #ffd23f; border-color: rgba(255,210,63,.5); }
+  #pathMenu { position: fixed; z-index: 40; display: none; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 14px;
+    background: rgba(14,24,36,.97); border: 1px solid var(--line); box-shadow: 0 12px 34px rgba(0,0,0,.5); max-width: min(94vw, 360px); }
+  #pathMenu.open { display: flex; }
+  #pathMenu .pm-title { font-size: 12.5px; color: var(--muted); padding-right: 30px; }
+  #pathMenu .pm-x { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; line-height: 1; }
+  #pathMenu .pm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  #pathMenu .pm-lab { font-size: 12px; color: var(--muted); width: 78px; flex: 0 0 auto; }
+  #pathMenu .pm-chip { min-width: 36px; min-height: 36px; height: 36px; padding: 0 8px; border-radius: 50%; font-weight: 700; font-size: 14px; border: 2px solid transparent; }
+  #pathMenu .pm-chip.a { background: #fff; color: #000; border-color: #9aa7b3; }
+  #pathMenu .pm-chip.b { background: #1e5bd6; color: #fff; border-color: #0d2f73; }
+  #pathMenu .pm-chip.gk { background: #e02b2b; color: #fff; border-color: #7d1010; font-size: 12px; }
+  #pathMenu .pm-chip.sug { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #floatPlay { position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 6; padding: 9px 20px; border-radius: 22px;
+    font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+  #floatPlay[hidden] { display: none; }
+  @media (max-width: 768px) { #floatPlay { bottom: calc(52px + env(safe-area-inset-bottom)); } }
+
+  /* ===== 悬浮快捷工具栏（毛玻璃 · 40px 小按钮 · 可拖动 · 边缘吸附折叠 · 横纵可切换） ===== */
+  #toolbar { --tb: 40px; position: fixed; left: 12px; top: 120px; z-index: 12; touch-action: none; user-select: none; -webkit-user-select: none;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-radius: 14px;
+    background: rgba(18, 30, 44, .52); border: 1px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 6px 22px rgba(0,0,0,.36);
+    transition: transform .28s cubic-bezier(.3,.8,.3,1), opacity .25s, box-shadow .2s; }
+  #toolbar.h { flex-direction: row; }
+  #toolbar.dragging { transition: none; box-shadow: 0 12px 34px rgba(0,0,0,.55); cursor: grabbing; }
+  #toolbar.idle { opacity: .5; }
+  #toolbar.idle:hover, #toolbar.dragging { opacity: 1; }
+  #toolbar.peek.edge-left   { transform: translateX(calc(-100% + 18px)); }
+  #toolbar.peek.edge-right  { transform: translateX(calc(100% - 18px)); }
+  #toolbar.peek.edge-top    { transform: translateY(calc(-100% + 18px)); }
+  #toolbar.peek.edge-bottom { transform: translateY(calc(100% - 18px)); }
+  #toolbar.peek::after { content: ""; position: absolute; border-radius: 3px; background: rgba(255,255,255,.7); pointer-events: none; }
+  #toolbar.peek.edge-left::after, #toolbar.peek.edge-right::after { width: 4px; height: 28px; top: 50%; margin-top: -14px; }
+  #toolbar.peek.edge-left::after { right: 5px; }
+  #toolbar.peek.edge-right::after { left: 5px; }
+  #toolbar.peek.edge-top::after, #toolbar.peek.edge-bottom::after { height: 4px; width: 28px; left: 50%; margin-left: -14px; }
+  #toolbar.peek.edge-top::after { bottom: 5px; }
+  #toolbar.peek.edge-bottom::after { top: 5px; }
+  #toolbar .tb-grip { flex: 0 0 auto; width: var(--tb); height: 14px; cursor: grab; border-radius: 8px; opacity: .75;
+    background: radial-gradient(circle, rgba(255,255,255,.75) 1.3px, transparent 1.7px) center / 6px 6px; background-clip: content-box; padding: 4px 11px; box-sizing: border-box; }
+  #toolbar.h .tb-grip { width: 14px; height: var(--tb); padding: 11px 4px; }
+  #toolbar .tb-grip:hover { opacity: 1; background-color: rgba(255,255,255,.1); }
+  #toolbar .tb { position: relative; flex: 0 0 auto; width: var(--tb); height: var(--tb); min-height: var(--tb); padding: 0; border-radius: 10px; font-size: calc(var(--tb) * .46); line-height: 1;
+    display: flex; align-items: center; justify-content: center; background: transparent; border: 2px solid transparent; color: #fff;
+    cursor: pointer; transition: background .15s, border-color .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
+  #toolbar .tb:hover { background: rgba(255,255,255,.14); }
+  #toolbar .tb:active { transform: scale(.92); }
+  #toolbar .tb.on { background: rgba(255,255,255,.30); border-color: #fff; box-shadow: 0 0 0 2px rgba(25,195,125,.55), 0 0 12px rgba(25,195,125,.45); }
+  #toolbar .tb:disabled { opacity: .32; cursor: default; background: transparent; transform: none; }
+  #toolbar .tb-sep { flex: 0 0 auto; width: 22px; height: 1px; background: rgba(255,255,255,.25); margin: 1px 0; }
+  #toolbar.h .tb-sep { width: 1px; height: 22px; margin: 0 1px; }
+  @media (max-width: 768px) { #toolbar { --tb: 34px; padding: 3px; border-radius: 12px; } }
+  @media (max-height: 520px) { #toolbar { --tb: 32px; } }
+  /* ===== 使用说明 / Help 弹窗 + 入口按钮 ===== */
+  .help-btn { width: 100%; margin: 0 0 12px; min-height: 46px; border-radius: 12px; font-size: 15px; font-weight: 700; color: #fff; cursor: pointer;
+    background: linear-gradient(135deg, #2f7bff, #1c4fd0); border: 1px solid rgba(255,255,255,.28); box-shadow: 0 6px 18px rgba(30,90,220,.35); }
+  .help-btn:hover { filter: brightness(1.1); }
+  #helpModal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    background: rgba(5, 10, 18, .66); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; visibility: hidden; transition: opacity .22s, visibility .22s; }
+  #helpModal.open { opacity: 1; visibility: visible; }
+  .hm-card { width: min(760px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; border-radius: 18px;
+    background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(0,0,0,.65);
+    transform: translateY(14px) scale(.98); transition: transform .25s cubic-bezier(.2,.9,.3,1.1); }
+  #helpModal.open .hm-card { transform: none; }
+  .hm-head { display: flex; align-items: center; gap: 12px; padding: 16px 16px 8px 20px; }
+  .hm-head h2 { margin: 0; font-size: 18px; }
+  .hm-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+  .hm-x { margin-left: auto; flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 18px; line-height: 1; background: rgba(255,255,255,.06); border-color: transparent; }
+  .hm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; padding: 8px 20px 12px; overflow-y: auto; }
+  .hm-item { display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.045); border: 1px solid var(--line); }
+  .hm-item .ico { flex: 0 0 auto; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 22px; border-radius: 12px; background: rgba(47,123,255,.18); }
+  .hm-item h3 { margin: 0 0 4px; font-size: 14.5px; }
+  .hm-item p { margin: 0; font-size: 12.8px; line-height: 1.6; color: #c4d3e2; }
+  .hm-item .hm-link { margin-top: 8px; min-height: 34px; padding: 4px 12px; font-size: 12.5px; border-radius: 8px; cursor: pointer; }
+  .hm-keys { margin: 0 20px; padding: 8px 12px; border-radius: 10px; background: rgba(0,0,0,.25); font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .hm-foot { display: flex; justify-content: flex-end; padding: 12px 20px 16px; }
+  .hm-foot .primary { min-height: 44px; padding: 0 26px; font-size: 15px; }
+  #toolbar [hidden] { display: none !important; }
+  @media (max-width: 560px) {
+    #helpModal { align-items: flex-end; padding: 0; }
+    .hm-card { width: 100%; max-height: 92dvh; border-radius: 20px 20px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+    .hm-grid { grid-template-columns: 1fr; padding: 8px 14px 12px; }
+    .hm-keys { margin: 0 14px; }
+  }
+
+  /* ===== 面板底部固定区：安装 App / 使用说明（两个按钮样式完全一致） ===== */
+  #panelScroll { border-radius: 14px 14px 0 0; border-bottom: 0; }
+  #panelFoot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 0 0 14px 14px;
+    background: var(--panel); border: 1px solid var(--line); border-top-color: rgba(120,160,200,.34);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: -10px 14px 40px rgba(0,0,0,.45); }
+  .dock-btn { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 14px;
+    border-radius: 10px; font-size: 14px; font-weight: 700; color: #eaf2fa; cursor: pointer;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(120,170,220,.38); transition: background .15s, border-color .15s, transform .12s; }
+  .dock-btn:hover { background: rgba(255,255,255,.13); border-color: rgba(150,200,250,.6); }
+  .dock-btn:active { transform: scale(.985); }
+  .dock-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 768px) and (orientation: portrait) {
+    #panelScroll { padding-bottom: 10px; }
+    #panelFoot { border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; background: var(--panel-solid); padding-bottom: calc(10px + env(safe-area-inset-bottom)); box-shadow: none; }
+  }
+  @media (max-height: 520px) { .dock-btn { min-height: 38px; padding: 5px 12px; } #panelFoot { gap: 6px; padding: 8px; } }
 </style>
 </head>
 <body>
@@ -298,12 +407,62 @@
 
   <div id="brand">
     <h1>🤽 水球战术模拟器</h1>
-    <span id="viewTag">全场</span>
+    <span id="viewTag" data-i18n-skip>全场</span>
     <span class="sub">2D Tactics Board</span>
   </div>
-  <div id="hint">拖动球员或水球可调整位置</div>
+  <div id="hint" data-i18n-skip>拖动球员或水球可调整位置</div>
+  <div id="toolbar" class="edge-none" role="toolbar" aria-label="绘图工具" aria-orientation="vertical">
+    <div class="tb-grip" id="tbGrip" title="按住拖动工具栏（靠近屏幕边缘会自动吸附并折叠）" aria-label="按住拖动工具栏"></div>
+    <button class="tb" type="button" data-tool="select" title="拖拽模式（V）：选中并移动球员 / 水球" aria-label="拖拽模式（V）：选中并移动球员 / 水球" aria-pressed="true">🖐️</button>
+    <button class="tb" type="button" data-tool="draw" title="画线模式（D）：自由绘制跑动轨迹" aria-label="画线模式（D）：自由绘制跑动轨迹" aria-pressed="false">✏️</button>
+    <button class="tb" type="button" data-tool="connect" title="连线模式（C）：点击 A 再点击 B，生成传球直线" aria-label="连线模式（C）：点击 A 再点击 B，生成传球直线" aria-pressed="false">➡️</button>
+    <button class="tb" type="button" data-tool="erase" data-adv title="橡皮擦（E）：点击删除单条轨迹或连线" aria-label="橡皮擦（E）：点击删除单条轨迹或连线" aria-pressed="false">🧽</button>
+    <div class="tb-sep" data-adv aria-hidden="true"></div>
+    <button class="tb" type="button" id="tbUndo" data-adv title="撤销上一步（Ctrl+Z）" aria-label="撤销上一步（Ctrl+Z）" disabled>↩️</button>
+    <button class="tb" type="button" id="tbClear" data-adv title="清空画板：删除所有轨迹和连线" aria-label="清空画板：删除所有轨迹和连线" disabled>🗑️</button>
+    <div class="tb-sep" aria-hidden="true"></div>
+    <button class="tb" type="button" id="tbRot" title="切换横向 / 纵向排列" aria-label="切换横向 / 纵向排列">↔️</button>
+    <button class="tb" type="button" id="tbHelp" title="使用说明" aria-label="使用说明">❓</button>
+  </div>
+  <button id="floatPlay" class="primary" type="button" hidden>▶ 播放战术</button>
+
+  <!-- 画线结束后：这条路线属于哪个球员？ -->
+  <div id="pathMenu" role="dialog" aria-label="这条路线属于哪个球员？">
+    <div class="pm-title">这条路线属于哪个球员？</div>
+    <button type="button" class="pm-x" aria-label="放弃这条线">✕</button>
+    <div class="pm-row" data-team="A"><span class="pm-lab">白队</span></div>
+    <div class="pm-row" data-team="B"><span class="pm-lab">蓝队</span></div>
+  </div>
 
   <!-- ===== 安装 App 指引弹窗 ===== -->
+  <!-- 使用说明 / Help -->
+  <div id="helpModal" role="dialog" aria-modal="true" aria-labelledby="hmTitle" aria-hidden="true">
+    <div class="hm-card">
+      <div class="hm-head">
+        <div>
+          <h2 id="hmTitle">👋 欢迎使用水球战术板</h2>
+          <p>1 分钟上手：拖一拖、画一画、点播放</p>
+        </div>
+        <button type="button" class="hm-x" id="hmClose" aria-label="关闭">✕</button>
+      </div>
+      <div class="hm-grid">
+        <section class="hm-item"><div class="ico" aria-hidden="true">🖐️</div><div><h3>基础操作</h3>
+          <p>选择拖拽模式下，直接按住球员或水球即可移动位置。</p></div></section>
+        <section class="hm-item"><div class="ico" aria-hidden="true">✏️</div><div><h3>快速画线</h3>
+          <p>点击悬浮工具栏的画笔，按住鼠标/手指在场上画曲线。松开后选择这条轨迹属于谁，再点“播放战术”，球员就会沿轨迹跑动。</p></div></section>
+        <section class="hm-item"><div class="ico" aria-hidden="true">⌨️</div><div><h3>战术输入</h3>
+          <p>在面板的输入框里输入文字（如“白队变阵4-2”或“蓝队收缩M-drop”），点击执行，全场自动播放战术动画并配有文字解析。</p></div></section>
+        <section class="hm-item"><div class="ico" aria-hidden="true">🔄</div><div><h3>视角切换</h3>
+          <p>在面板的“视角与人数”里选择半场/全场和上、下、左、右方向，满足不同屏幕和复盘需求。</p></div></section>
+        <section class="hm-item"><div class="ico" aria-hidden="true">📱</div><div><h3>安装 App</h3>
+          <p>在手机上通过浏览器菜单选择“添加到主屏幕”，即可像原生 App 一样全屏、离线使用。</p>
+          <button type="button" class="hm-link" id="hmInstall">查看安装步骤</button></div></section>
+      </div>
+      <div class="hm-keys">快捷键：V 拖拽 · D 画线 · C 连线 · E 橡皮擦 · Ctrl+Z 撤销 · M 展开/收起面板</div>
+      <div class="hm-foot"><button type="button" class="primary" id="hmOk">我知道了</button></div>
+    </div>
+  </div>
+
   <div id="installModal" role="dialog" aria-modal="true" aria-labelledby="imTitle" aria-hidden="true">
     <div class="im-card">
       <div class="im-head">
@@ -322,13 +481,13 @@
 
       <div class="im-body">
         <div class="im-state" id="imStandalone" hidden>✅ 你现在已经是以 App 方式运行了，无需再安装。</div>
-        <div class="im-tip alert" id="imInApp" hidden>⚠️ 检测到你正在微信 / QQ 等内置浏览器中打开，这里无法安装。请点击右上角 <b>⋯</b> 或分享菜单，选择“<b>在浏览器中打开</b>”（iPhone/iPad 请选 Safari，安卓请选 Chrome），再按下面步骤操作。</div>
+        <div class="im-tip alert" id="imInApp" data-i18n-html="imInApp" hidden>⚠️ 检测到你正在微信 / QQ 等内置浏览器中打开，这里无法安装。请点击右上角 <b>⋯</b> 或分享菜单，选择“<b>在浏览器中打开</b>”（iPhone/iPad 请选 Safari，安卓请选 Chrome），再按下面步骤操作。</div>
 
         <!-- 安卓 -->
         <section class="im-panel" id="panelAndroid" role="tabpanel" aria-labelledby="tabAndroid">
-          <p class="im-lead">如果您使用的是<b>安卓手机或平板</b>（推荐使用 <b>Chrome 浏览器</b>），请按以下步骤安装：</p>
+          <p class="im-lead" data-i18n-html="leadAndroid">如果您使用的是<b>安卓手机或平板</b>（推荐使用 <b>Chrome 浏览器</b>），请按以下步骤安装：</p>
           <ol class="im-steps">
-            <li>点击浏览器右上角的 <kbd>⋮</kbd>（三个点）菜单。
+            <li><span data-i18n-html="a1">点击浏览器右上角的 <kbd>⋮</kbd>（三个点）菜单。</span>
               <!-- 示意图：Chrome 菜单 -->
               <svg class="im-fig" viewBox="0 0 300 168" role="img" aria-label="安卓 Chrome 菜单示意图">
                 <rect x="0" y="0" width="300" height="168" rx="12" fill="#0b141e"/>
@@ -345,8 +504,8 @@
                 <g font-size="11" fill="#9fb4c7" font-family="sans-serif"><text x="154" y="136">分享…</text><text x="154" y="152">设置</text></g>
               </svg>
             </li>
-            <li>选择 <kbd>安装应用</kbd> 或 <kbd>添加到主屏幕</kbd>。</li>
-            <li>确认安装后，即可在桌面找到<b>战术板图标</b>。</li>
+            <li data-i18n-html="a2">选择 <kbd>安装应用</kbd> 或 <kbd>添加到主屏幕</kbd>。</li>
+            <li data-i18n-html="a3">确认安装后，即可在桌面找到<b>战术板图标</b>。</li>
           </ol>
           <button type="button" class="install-btn" id="imNativeInstall" hidden>⚡ 一键安装（当前浏览器支持）</button>
           <div class="im-tip">不同品牌的浏览器菜单文字可能略有差异；如果看不到“安装应用”，请改用 Chrome 打开本页。</div>
@@ -354,11 +513,10 @@
 
         <!-- 苹果 -->
         <section class="im-panel" id="panelIOS" role="tabpanel" aria-labelledby="tabIOS" hidden>
-          <p class="im-lead">如果您使用的是 <b>iPhone 或 iPad</b>，请务必使用系统自带的 <b>Safari 浏览器</b> 打开本网页。</p>
+          <p class="im-lead" data-i18n-html="leadIOS">如果您使用的是 <b>iPhone 或 iPad</b>，请务必使用系统自带的 <b>Safari 浏览器</b> 打开本网页。</p>
           <ol class="im-steps">
-            <li>点击屏幕底部中间的 <kbd>分享</kbd> 按钮
-              （<svg class="inl" viewBox="0 0 24 24" fill="none" stroke="#7fc4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M6 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1"/></svg> 一个方框带向上箭头的图标）。iPad 的分享按钮在屏幕右上角。</li>
-            <li>向下滑动菜单，找到并点击 <kbd>添加到主屏幕</kbd>。
+            <li><span data-i18n-html="i1a">点击屏幕底部中间的 <kbd>分享</kbd> 按钮（</span><svg class="inl" viewBox="0 0 24 24" fill="none" stroke="#7fc4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M6 11H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1"/></svg><span data-i18n-html="i1b"> 一个方框带向上箭头的图标）。iPad 的分享按钮在屏幕右上角。</span></li>
+            <li><span data-i18n-html="i2">向下滑动菜单，找到并点击 <kbd>添加到主屏幕</kbd>。</span>
               <svg class="im-fig" viewBox="0 0 300 150" role="img" aria-label="iOS 分享菜单示意图">
                 <rect x="0" y="0" width="300" height="150" rx="12" fill="#0b141e"/>
                 <rect x="20" y="12" width="260" height="126" rx="14" fill="#1b2a39" stroke="#33495e"/>
@@ -370,9 +528,9 @@
                 <g font-size="11.5" fill="#9fb4c7" font-family="sans-serif"><text x="36" y="122">标记</text></g>
               </svg>
             </li>
-            <li>点击右上角的 <kbd>添加</kbd>。回到桌面即可看到 <b>App</b>。</li>
+            <li data-i18n-html="i3">点击右上角的 <kbd>添加</kbd>。回到桌面即可看到 <b>App</b>。</li>
           </ol>
-          <div class="im-tip">注意：微信、QQ 等内置浏览器无法直接安装，请点击右上角选择“<b>在浏览器中打开</b>”。</div>
+          <div class="im-tip" data-i18n-html="tipIOS">注意：微信、QQ 等内置浏览器无法直接安装，请点击右上角选择“<b>在浏览器中打开</b>”。</div>
         </section>
       </div>
     </div>
@@ -390,7 +548,7 @@
   </div>
 
   <!-- 总开关 -->
-  <button id="panelToggle" type="button" aria-controls="panel" aria-expanded="true" title="展开/收起控制面板（快捷键 M）">
+  <button id="panelToggle" data-i18n-skip type="button" aria-controls="panel" aria-expanded="true" title="展开/收起控制面板（快捷键 M）">
     <span class="ico">✕</span><span class="txt">收起</span>
   </button>
 
@@ -399,7 +557,18 @@
   <aside id="panel" aria-label="控制面板">
     <div id="panelScroll">
       <div id="sheetHead"><b>🎛️ 控制面板</b><button id="sheetClose" type="button" aria-label="关闭面板">✕ 关闭</button></div>
-      <button id="installBtn" class="install-btn" type="button" aria-haspopup="dialog" aria-controls="installModal">📱 安装手机/平板 App</button>
+      <details class="sec" id="secSettings" open>
+        <summary><span class="ic">⚙️</span>系统设置 / Settings</summary>
+        <div class="sec-body">
+          <label class="field">语言 / Language
+            <select id="langSel" autocomplete="off">
+              <option value="zh" selected>中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label class="field"><span>显示区域标注 / Show Zone Labels</span><input type="checkbox" id="showZoneLabels" checked autocomplete="off"></label>
+        </div>
+      </details>
 
       <details class="sec" open>
         <summary><span class="ic">🎛️</span>视角与人数</summary>
@@ -407,8 +576,8 @@
           <div>
             <div class="ctl-label">显示模式</div>
             <div class="radio-group" role="radiogroup" aria-label="显示模式">
-              <label class="radio"><input type="radio" name="viewMode" value="full" checked autocomplete="off"><span>全景模式</span></label>
-              <label class="radio"><input type="radio" name="viewMode" value="half" autocomplete="off"><span>半场模式</span></label>
+              <label class="radio"><input type="radio" name="viewMode" value="full" autocomplete="off"><span>全景模式</span></label>
+              <label class="radio"><input type="radio" name="viewMode" value="half" checked autocomplete="off"><span>半场模式</span></label>
             </div>
           </div>
           <div>
@@ -419,7 +588,7 @@
               <button type="button" data-ori="top"    aria-pressed="false">↑ 上</button>
               <button type="button" data-ori="bottom" aria-pressed="false">↓ 下</button>
             </div>
-            <div class="note" id="oriNote" style="margin-top:6px"></div>
+            <div class="note" id="oriNote" data-i18n-skip style="margin-top:6px"></div>
           </div>
           <div class="team-card a">
             <div class="name"><span class="badge">A</span>白队</div>
@@ -453,12 +622,16 @@
         <summary><span class="ic">⌨️</span>文字战术指令</summary>
         <div class="sec-body">
           <div id="quick" aria-label="快捷指令">
+            <button type="button" data-cmd="白队变阵4-2">白队变阵4-2</button>
+            <button type="button" data-cmd="蓝队收缩M-drop">蓝队收缩M-drop</button>
+            <button type="button" data-cmd="白队变阵3-3">白队变阵3-3</button>
+            <button type="button" data-cmd="蓝队3-3人盯人">蓝队3-3人盯人</button>
+            <button type="button" data-cmd="白队5号移动到中锋位置">白队5号移动到中锋位置</button>
+            <button type="button" data-cmd="蓝队3号移动到左外围">蓝队3号移动到左外围</button>
+            <button type="button" data-cmd="白队1号退防到左翼">白队1号退防到左翼</button>
             <button type="button" data-cmd="白队全员压上">白队全员压上</button>
-            <button type="button" data-cmd="蓝队全员压上">蓝队全员压上</button>
             <button type="button" data-cmd="蓝队2号拿球">蓝队2号拿球</button>
-            <button type="button" data-cmd="白队1号拿球">白队1号拿球</button>
             <button type="button" data-cmd="白队水球传给4号">白队水球传给4号</button>
-            <button type="button" data-cmd="白队3号移动到6米线左侧">白队3号到6米线左侧</button>
             <button type="button" data-cmd="白队射门">白队射门</button>
             <button type="button" data-cmd="蓝队射门">蓝队射门</button>
           </div>
@@ -484,19 +657,46 @@
             <button class="scn" type="button" data-scn="cross"     title="自动生成两名白队球员，演示弧线绕行与交叉换位，并保留跑动轨迹">交叉换位</button>
           </div>
           <div class="note">点击后自动切换到全场视角、设置场景并播放，讲解同步显示在下方“战术讲解”。</div>
+
+          <div>
+            <div class="ctl-label">白队进攻阵型</div>
+            <div class="tabbar formation-bar" data-fteam="A" role="group" aria-label="白队进攻阵型">
+              <button type="button" data-form="33" aria-pressed="false" title="经典阵地战：中锋 + 两边锋 + 两外围 + 顶部">白队：3-3 阵型</button>
+              <button type="button" data-form="42" aria-pressed="false" title="多打少（6打5）：两侧二人组 + 中锋 + 顶部">白队：4-2 阵型</button>
+            </div>
+          </div>
+          <div>
+            <div class="ctl-label">蓝队防守阵型</div>
+            <div class="tabbar formation-bar" data-fteam="B" role="group" aria-label="蓝队防守阵型">
+              <button type="button" data-form="man"   aria-pressed="false" title="3-3 人盯人：贴身防守中锋，两翼与外围各自盯防">蓝队：3-3 人盯人</button>
+              <button type="button" data-form="mdrop" aria-pressed="false" title="M-Drop 收缩防守：向禁区收缩，应对强力中锋">蓝队：M-Drop 防守</button>
+            </div>
+          </div>
+          <div class="note">阵型坐标以“球门在左的半场”为基准（X：离球门线的距离，Y：0–20 米宽度）。切换视角 / 方向时自动镜像旋转；全景模式下摆在白队进攻的右侧球门前。号码对应：中锋 / CK 防守者 = 5 号，边锋 = 1、2 号，外围 = 3、4 号，顶部 = 6 号，第 7 人（如有）居中策应。</div>
         </div>
       </details>
 
       <details class="sec" open>
         <summary><span class="ic">🧭</span>轨迹控制</summary>
         <div class="sec-body">
+          <div>
+            <div class="ctl-label">操作模式</div>
+            <div class="radio-group" role="radiogroup" aria-label="操作模式">
+              <label class="radio"><input type="radio" name="opMode" value="select" checked autocomplete="off"><span>选择与拖拽</span></label>
+              <label class="radio"><input type="radio" name="opMode" value="draw" autocomplete="off"><span>战术画线</span></label>
+              <label class="radio"><input type="radio" name="opMode" value="connect" autocomplete="off"><span>连线（传球）</span></label>
+              <label class="radio"><input type="radio" name="opMode" value="erase" autocomplete="off"><span>橡皮擦</span></label>
+            </div>
+          </div>
           <label class="switch">
             <input type="checkbox" id="lineMode">
             <span class="track"></span>
-            <span>画线模式</span>
+            <span>连线模式（点A→点B，传球/射门）</span>
           </label>
           <label class="field"><span>显示跑动轨迹</span><input type="checkbox" id="showTrails" checked autocomplete="off"></label>
+          <button id="playBtn" class="primary" type="button">▶ 播放战术</button>
           <div class="btn-grid">
+            <button id="clearPaths" type="button">清除所有画线</button>
             <button id="clearLines" type="button">清除所有连线</button>
             <button id="clearTrails" type="button">清除跑动轨迹</button>
           </div>
@@ -507,10 +707,15 @@
         <summary><span class="ic">📋</span>战术讲解</summary>
         <div class="sec-body">
           <div class="row between"><span class="note">动画播放时自动生成</span><button id="clearLog" type="button">清空</button></div>
-          <div id="log"></div>
+          <div id="log" data-i18n-skip></div>
         </div>
       </details>
 
+    </div>
+    <!-- 固定在抽屉最底部（Flexbox 贴底）：始终可见，方便随时找到帮助 -->
+    <div id="panelFoot">
+      <button id="installBtn" data-i18n-skip class="dock-btn" type="button" aria-haspopup="dialog" aria-controls="installModal">📱 安装 App (Install App)</button>
+      <button id="helpBtn" class="dock-btn" type="button" aria-haspopup="dialog" aria-controls="helpModal">❓ 使用说明 (Help &amp; Guide)</button>
     </div>
   </aside>
 </div>
@@ -534,17 +739,34 @@
   const REENTRY_ALONG = 2;
   const REENTRY_DEPTH = 1;
 
+  // =====================================================================
+  //                       双语系统（中文 / English）核心
+  // =====================================================================
+  // currentLang：全局语言（'zh' | 'en'，默认中文）。所有“运行时生成”的文字（讲解、提示、报错、画布标注）都通过 L()/B()/tx() 取当前语言；
+  // 页面里写死的文字由后面的 I18N 字典 + updateUILanguage() 遍历 DOM 更新。
+  const LANG_KEY = 'wp-lang', ZONE_KEY = 'wp-zone-labels';
+  let currentLang = 'zh';
+  let showZoneLabels = true;                                     // 球场上的“2米线 / 5米线 / 6米线 / 快速换人区 / 水牢…”文字标注
+  try { const v = localStorage.getItem(LANG_KEY); if (v === 'en' || v === 'zh') currentLang = v; } catch (e) {}
+  try { if (localStorage.getItem(ZONE_KEY) === '0') showZoneLabels = false; } catch (e) {}
+  const L = (zh, en) => (currentLang === 'en' ? en : zh);        // 立即按当前语言取文字
+  const B = (zh, en) => ({ zh, en });                            // 双语文本：讲解面板存下两种语言，切换语言时已有记录也会实时改写
+  const tx = s => (s && typeof s === 'object' ? (s[currentLang] ?? s.zh) : s);
+  const bi = f => ({ zh: f('zh'), en: f('en') });                // 用同一个模板函数生成两种语言
+  const cap1 = s => s.charAt(0).toUpperCase() + s.slice(1);
+
   // ===== 实体参数 =====
-  const PLAYER_R = 0.5;
+  const PLAYER_R = 0.4;                // 球员图标半径（米）：防守者与对位进攻者只相距 0.5 米时，图标重叠较少，号码仍清晰
   const BALL_R = 0.3;
   const MIN_PLAYERS = 3, MAX_PLAYERS = 7;   // 场上球员人数范围（不含门将）
   const DRAG_THRESHOLD = 4;
   const SWIM_SPEED = 4.2;                   // 路径动画的基准游速（米/秒）
   const TEAMS = {
-    A: { cap: '#ffffff', capStroke: '#9aa7b3', text: '#000000', name: '白队' },
-    B: { cap: '#1e5bd6', capStroke: '#0d2f73', text: '#ffffff', name: '蓝队' },
+    A: { cap: '#ffffff', capStroke: '#9aa7b3', text: '#000000', name: '白队', en: 'White' },
+    B: { cap: '#1e5bd6', capStroke: '#0d2f73', text: '#ffffff', name: '蓝队', en: 'Blue' },
     GK: { cap: '#e02b2b', capStroke: '#7d1010' },   // 门将：纯红帽，不显示数字
   };
+  const tn = (team, l = currentLang) => (l === 'en' ? TEAMS[team].en : TEAMS[team].name);
   const PASS_COLOR = '#0b2a4a';
   const SHOT_COLOR = '#ff5a00';
   const ACTIVE_COLOR = '#19c37d';
@@ -564,7 +786,7 @@
     full: { x0: -MARGIN, x1: FIELD_L + MARGIN, label: '全景模式', oris: ['left', 'right'] },
     half: { x0: -MARGIN, x1: 15,               label: '半场模式', oris: ['left', 'right', 'top', 'bottom'] },
   };
-  const view = { mode: 'full', x0: VIEWS.full.x0, x1: VIEWS.full.x1, ori: 'left' };
+  const view = { mode: 'half', x0: VIEWS.half.x0, x1: VIEWS.half.x1, ori: 'left' };   // 默认：半场 · 球门在左
   // 当前模式下不支持的方向（如全景 + 上）回落到“左”
   const normalizeOri = (mode, ori) => (VIEWS[mode].oris.includes(ori) ? ori : 'left');
 
@@ -659,6 +881,8 @@
     requestRender();
   }
 
+  const VIEW_NAME = { full: B('全景模式', 'Full Pitch'), half: B('半场模式', 'Half Pitch') };
+  const ORI_NAME = { left: B('球门在左', 'Goal Left'), right: B('球门在右', 'Goal Right'), top: B('球门在上', 'Goal Top'), bottom: B('球门在下', 'Goal Bottom') };
   // 面板控件与当前视角保持一致：单选按钮 + 方向任务栏（全景模式下“上/下”置灰禁用）
   function syncViewUI() {
     document.querySelectorAll('input[name="viewMode"]').forEach(r => { r.checked = r.value === view.mode; });
@@ -668,10 +892,11 @@
       b.setAttribute('aria-pressed', String(o === view.ori));
     });
     const note = document.getElementById('oriNote');
-    if (note) note.textContent = view.mode === 'full' ? '全景模式只支持横向（球门在左 / 右），切换到半场模式可使用 ↑ ↓。'
-                                                      : '半场模式：球门在所选方向，可随时切换。';
+    if (note) note.textContent = view.mode === 'full'
+      ? L('全景模式只支持横向（球门在左 / 右），切换到半场模式可使用 ↑ ↓。', 'Full-pitch mode is horizontal only (goal on the left / right). Switch to half-pitch mode to use ↑ ↓.')
+      : L('半场模式：球门在所选方向，可随时切换。', 'Half-pitch mode: the goal is on the chosen side — switch any time.');
     const tag = document.getElementById('viewTag');
-    if (tag) tag.textContent = VIEWS[view.mode].label + ' · 球门在' + ORIENTS[view.ori].label.slice(-1);
+    if (tag) tag.textContent = tx(VIEW_NAME[view.mode]) + ' · ' + tx(ORI_NAME[view.ori]);
   }
 
   // 攻防方向：全场 —— 白队守左门、攻右门；半场（左侧防守半场）—— 蓝队守左门，白队攻向左门
@@ -690,14 +915,41 @@
     ctx.restore();
   }
 
-  function label(text, xm, ym, color = 'rgba(255,255,255,.85)', size = 11, along = false) {
+  function label(text, xm, ym, color = 'rgba(255,255,255,.85)', size = 11, along = false, shadow = false) {
     ctx.save();
     ctx.fillStyle = color;
-    ctx.font = `${size * SCALE / BASE_SCALE}px sans-serif`;
+    ctx.font = `${Math.max(7.5, size * SCALE / BASE_SCALE)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    drawText(text, px(xm), py(ym), along);
+    if (shadow) { ctx.shadowColor = 'rgba(8, 40, 70, .55)'; ctx.shadowBlur = 3; }   // 白字加一圈淡阴影，浅蓝水面上也看得清
+    drawText(text, px(xm), py(ym), along);                                         // drawText 反向旋转：任何方向文字都保持正向
     ctx.restore();
+  }
+
+  // 区域文字标注（中 / 英），由“系统设置 → 显示区域标注”整体开关
+  const ZLABEL = {
+    zh: { l2: '2米线', l5: '5米线', l6: '6米线', mid: '中线', area: '禁区', sub: '快速换人区', re: '水牢',
+          half: '半场视角 · 左侧防守半场（视野到中线右侧 2.5 米）' },
+    en: { l2: '2m Line', l5: '5m Line', l6: '6m Line', mid: 'Halfway', area: 'Goal Area', sub: 'Sub Area', re: 'Re-entry',
+          half: 'Half-pitch view · left defensive half (extends 2.5 m past the halfway line)' },
+  };
+  function drawZoneLabels(subLabelX, gaY) {
+    const Z = ZLABEL[currentLang];
+    const ROW_A = -2.4, ROW_B = -1.5;                       // 线名分两行错开：5米线与6米线只相距1米，文字不会叠在一起
+    const WHITE = 'rgba(255,255,255,.95)';
+    [[2, 'l2', ROW_B], [5, 'l5', ROW_A], [6, 'l6', ROW_B],
+     [FIELD_L - 6, 'l6', ROW_B], [FIELD_L - 5, 'l5', ROW_A], [FIELD_L - 2, 'l2', ROW_B]]
+      .forEach(([x, k, y]) => label(Z[k], x, y, WHITE, 11, false, true));
+    label(Z.mid, FIELD_L / 2, ROW_B, WHITE, 11, false, true);
+    label(Z.sub, subLabelX, -SUB_ZONE_W / 2, '#0b5d2c', 11, true);
+    label(Z.sub, subLabelX, FIELD_W + SUB_ZONE_W / 2, '#0b5d2c', 11, true);
+    label(Z.re, -REENTRY_DEPTH / 2 - 0.05, REENTRY_ALONG + 0.7, '#7a1f15', 10);
+    label(Z.re, FIELD_L + REENTRY_DEPTH / 2 + 0.05, FIELD_W - REENTRY_ALONG - 0.7, '#7a1f15', 10);
+    label(Z.area, GOAL_AREA_D / 2, gaY - 0.75, WHITE, 10, false, true);
+    label(Z.area, FIELD_L - GOAL_AREA_D / 2, gaY + GOAL_AREA_W + 0.75, WHITE, 10, false, true);
+    if (view.mode === 'half' && !isVertical()) {            // 竖向时画布边缘放不下这行字
+      label(Z.half, (view.x0 + view.x1) / 2, FIELD_W + 2.2, '#0b2a4a', 11);
+    }
   }
 
   // ===== 场地底图 =====
@@ -714,8 +966,6 @@
     ctx.fillRect(px(SUB_ZONE_FROM), py(-SUB_ZONE_W), len(SUB_ZONE_TO - SUB_ZONE_FROM), len(SUB_ZONE_W));
     ctx.fillRect(px(SUB_ZONE_FROM), py(FIELD_W), len(SUB_ZONE_TO - SUB_ZONE_FROM), len(SUB_ZONE_W));
     const subLabelX = (SUB_ZONE_FROM + Math.min(SUB_ZONE_TO, view.x1)) / 2;   // 标签居中于“可见”的那一段
-    label('快速换人区', subLabelX, -SUB_ZONE_W / 2, '#0b5d2c', 11, true);
-    label('快速换人区', subLabelX, FIELD_W + SUB_ZONE_W / 2, '#0b5d2c', 11, true);
 
     // 重新入场区（水牢）：球门线后方
     ctx.fillStyle = 'rgba(231, 76, 60, 0.5)';
@@ -768,18 +1018,8 @@
     });
     ctx.restore();
 
-    // 标注
-    [[2, '2m'], [5, '5m'], [6, '6m'], [FIELD_L - 6, '6m'], [FIELD_L - 5, '5m'], [FIELD_L - 2, '2m']]
-      .forEach(([x, t]) => label(t, x, -1.9));
-    label('中线', FIELD_L / 2, -1.9);
-    label('重新入场区', -REENTRY_DEPTH / 2 - 0.05, REENTRY_ALONG + 0.7, '#7a1f15', 10);
-    label('重新入场区', FIELD_L + REENTRY_DEPTH / 2 + 0.05, FIELD_W - REENTRY_ALONG - 0.7, '#7a1f15', 10);
-    label('球门区 7.16m × 2m', 2.6, FIELD_W / 2 - GOAL_AREA_W / 2 - 0.6, 'rgba(255,255,255,.9)', 10);
-    label('球门区 7.16m × 2m', FIELD_L - 2.6, FIELD_W / 2 + GOAL_AREA_W / 2 + 0.6, 'rgba(255,255,255,.9)', 10);
-
-    if (view.mode === 'half' && !isVertical()) {      // 竖向时画布边缘放不下这行字，改由左上角标签提示
-      label('半场视角 · 左侧防守半场（视野到中线右侧 2.5 米）', (view.x0 + view.x1) / 2, FIELD_W + 2.2, '#0b2a4a', 11);
-    }
+    // 区域文字标注：勾选“显示区域标注”才绘制，取消后画面只剩球场线条与球员
+    if (showZoneLabels) drawZoneLabels(subLabelX, gaY);
   }
 
   // ===== 实体数据 =====
@@ -791,6 +1031,54 @@
   let players = [];     // { kind:'player', team, num, isGK, x, y }；场上球员号码从 1 起，门将编号为 0 且从不显示
   let lines = [];       // { type:'pass'|'shot', from, to }，from/to 可以是实体，也可以是固定锚点 {x,y}
   let trails = [];      // 跑动轨迹：{ team, pts:[{x,y}...] }。只存坐标副本，不引用球员，所以拖拽球员不会影响旧轨迹
+  let drawnPaths = [];  // 手绘跑动路线：{ player, samples:[{x,y,d}], total, progress(0–1), done, endPos }，米制坐标
+  let drawMode = false; // 操作模式：true = 战术画线
+  let eraseMode = false; // 操作模式：true = 橡皮擦
+  let opMode = 'select'; // 当前工具：select | draw | connect | erase（悬浮工具栏、面板单选、快捷键共用）
+  let eraseDown = null, eraseHover = null;
+  const history = [];   // 撤销栈：每项是一个“撤销函数”
+  function syncToolbar() {
+    document.querySelectorAll('#toolbar [data-tool]').forEach(b => {
+      const on = b.dataset.tool === opMode;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+    });
+    const u = document.getElementById('tbUndo'), c = document.getElementById('tbClear');
+    if (u) u.disabled = running || !history.length;
+    if (c) c.disabled = running || !(drawnPaths.length || lines.length);
+    // 极简入门：刚打开时工具栏只显示 拖拽 / 画线 / 连线 三个基础工具；画了东西（或正在用橡皮擦）后才出现 橡皮擦 / 撤销 / 清空
+    const showAdv = !!(drawnPaths.length || lines.length || history.length || opMode === 'erase');
+    let advChanged = false;
+    document.querySelectorAll('#toolbar [data-adv]').forEach(el => { if (el.hidden === showAdv) { el.hidden = !showAdv; advChanged = true; } });
+    if (advChanged && window.wpToolbarRelayout) window.wpToolbarRelayout();
+  }
+  function histPush(undoFn) { history.push(undoFn); if (history.length > 60) history.shift(); syncToolbar(); }
+  function histClear() { history.length = 0; syncToolbar(); }
+  function undo() {
+    if (running || !history.length) return;
+    history.pop()();
+    setSelected(null); closePathMenu(); requestRender(); syncToolbar();
+  }
+  function clearBoard() {
+    if (running || !(drawnPaths.length || lines.length)) return;
+    const sp = drawnPaths, sl = lines;
+    drawnPaths = []; lines = [];
+    histPush(() => { drawnPaths = sp.concat(drawnPaths); lines = sl.concat(lines); });
+    setSelected(null); closePathMenu(); requestRender();
+  }
+  function clearPathsOnly() {
+    if (running || !drawnPaths.length) return;
+    const sp = drawnPaths; drawnPaths = [];
+    histPush(() => { drawnPaths = sp.concat(drawnPaths); });
+    closePathMenu(); requestRender();
+  }
+  function clearLinesOnly() {
+    if (running || !lines.length) return;
+    const sl = lines; lines = [];
+    histPush(() => { lines = sl.concat(lines); });
+    setSelected(null); requestRender();
+  }
+  let drawing = null;   // 正在画的一笔
+  let pendingPath = null; // 画完、等待选择球员的路线
   let markers = [];     // 场上标记点（如演示里的“中心点”）：{ x, y, label }
 
   let showNumbers = true;
@@ -837,30 +1125,23 @@
   }
 
   // —— 半场（左侧防守半场，阵地战）——
-  //   蓝队：守门员在左底线；场上球员回缩成两排防守（前排 4.5 米、后排 2.6 米，6 人即 3-3）
-  //   白队：球员沿 5–6 米线外围的弧线展开准备进攻（两翼靠近 5–6 米线，中路更远）；
-  //         白队守门员（若有）站在半场最右侧边缘（己方球门远在画面之外）
+  //   默认开局 = 一键预设阵型：白队 3-3 进攻阵型 vs 蓝队 3-3 人盯人防守（坐标见下方 FORMATIONS，单一数据源）。
+  //   蓝队守门员站在左球门线中央；白队守门员（若有）站在半场最右侧边缘（己方球门远在画面之外）。
+  //   场上人数不是 6 人时仍按“号码 → 站位”取点：5 人 = 无顶部（6号），7 人 = 第 7 人居中策应，更少则高号位空缺。
   const HALF_GK_X = 14.2;
   function buildTeamHalf(team, k, hasGK) {
     const list = [];
-    if (team === 'B') {
-      if (hasGK) list.push({ kind: 'player', team, num: GK_NUM, isGK: true, x: GK_X, y: FIELD_W / 2 });
-      const front = Math.ceil(k / 2), back = k - front;
-      const row = (count, x, startNum) => {
-        for (let i = 0; i < count; i++) {
-          const slot = (FIELD_W - 4) / count;
-          list.push({ kind: 'player', team, num: startNum + i, isGK: false, x, y: 2 + slot * (i + 0.5) });
-        }
-      };
-      row(front, 4.5, FIRST_NUM);
-      if (back > 0) row(back, 2.6, FIRST_NUM + front);
-    } else {
-      if (hasGK) list.push({ kind: 'player', team, num: GK_NUM, isGK: true, x: HALF_GK_X, y: FIELD_W / 2 });
-      for (let i = 0; i < k; i++) {
-        const y = k === 1 ? FIELD_W / 2 : 2.5 + 15 * i / (k - 1);
-        const r = Math.abs(y - FIELD_W / 2) / 7.5;
-        list.push({ kind: 'player', team, num: FIRST_NUM + i, isGK: false, x: 7.8 - 2.2 * r * r, y });
-      }
+    const def = team === 'A' ? FORMATIONS.A['33'] : FORMATIONS.B.man;
+    if (hasGK) {
+      const g = team === 'B' ? { x: def.gk[0], y: def.gk[1] } : { x: HALF_GK_X, y: FIELD_W / 2 };
+      list.push({ kind: 'player', team, num: GK_NUM, isGK: true, x: g.x, y: g.y });
+    }
+    for (let i = 0; i < k; i++) {
+      const num = FIRST_NUM + i;
+      const spec = def.slots[num];
+      if (!spec) continue;
+      const t = mToField(spec[0], spec[1]);
+      list.push({ kind: 'player', team, num, isGK: false, x: t.x, y: t.y });
     }
     return list;
   }
@@ -890,10 +1171,11 @@
     const list = [...build('A', nA, gkA), ...build('B', nB, gkB)];
 
     let ballPos = { x: FIELD_L / 2, y: FIELD_W / 2 };
-    if (view.mode === 'half') {                 // 半场：水球在白队最靠近中路的球员身前
+    if (view.mode === 'half') {                 // 半场：水球在白队“顶部”球员（6号）身后，随时可以组织传导
+      const top = mToField(6, 10);
       const carrier = list.filter(p => p.team === 'A' && !p.isGK)
-        .sort((a, b) => Math.abs(a.y - FIELD_W / 2) - Math.abs(b.y - FIELD_W / 2))[0];
-      if (carrier) ballPos = { x: carrier.x + attackDir('A') * 0.8, y: carrier.y };
+        .sort((a, b) => Math.hypot(a.x - top.x, a.y - top.y) - Math.hypot(b.x - top.x, b.y - top.y))[0];
+      if (carrier) ballPos = { x: carrier.x - attackDir('A') * 0.9, y: carrier.y };
     }
     return { list, ballPos, nA, nB, gkA, gkB };
   }
@@ -909,12 +1191,14 @@
     queue = [];
     running = false;
     activeEnts = [];
+    if (typeof formBusy !== 'undefined') { formBusy.A = formBusy.B = false; }
     markScenario(null);
   }
 
   // 根据控制面板的当前设置和视角重新生成所有球员（实时重绘）
   function rebuild() {
     stopAnimations();
+    markFormation('A', null); markFormation('B', null);      // 重排站位后，阵型高亮清除
     const { list, ballPos } = layoutAll();
     players = list;
     ball.x = ballPos.x;
@@ -923,6 +1207,7 @@
     lines = [];
     trails = [];
     markers = [];
+    drawnPaths = []; drawing = null; closePathMenu(); histClear();
     setSelected(null);
     requestRender();
   }
@@ -931,11 +1216,15 @@
   const keyOf = p => `${p.team}${p.isGK ? 'g' : p.num}`;
 
   function viewNote(mode) {
-    if (mode === 'full') return '已切换到全场视角：双方按各自半场就位，蓝队在右侧防守阵型，白队在己方半场外围准备进攻。';
+    if (mode === 'full') return B(
+      '已切换到全景模式：双方按各自半场就位，白队在己方半场外围准备推进，蓝队在右侧防守。',
+      'Switched to full-pitch mode: each team sets up in its own half — White is ready to advance from the perimeter of its half, and Blue defends on the right.');
     const { nA, nB, gkB } = layoutAll();
-    const front = Math.ceil(nB / 2), back = nB - front;
-    return `已切换到半场视角（左侧防守半场）：${gkB ? '蓝队守门员在左底线，' : ''}蓝队${nB}名场上球员回缩成${front}-${back}防守；` +
-      `白队${nA}名场上球员在5–6米线外围展开，准备进攻。`;
+    return B(
+      `已切换到半场模式：${gkB ? '蓝队守门员在球门线中央，' : ''}蓝队${nB}名场上球员摆出3-3人盯人防守，` +
+      `白队${nA}名场上球员摆出3-3进攻阵型（5号中锋压在2米线），准备阵地进攻。`,
+      `Switched to half-pitch mode: ${gkB ? 'the Blue goalkeeper stands in the middle of the goal line, ' : ''}${nB} Blue field players set up a 3-3 man-to-man defense ` +
+      `and ${nA} White field players form a 3-3 attack (#5 center forward on the 2 m line), ready for a set offense.`);
   }
 
   /**
@@ -965,12 +1254,12 @@
     players = list;
     ball.hidden = false;
     tasks.push({ obj: ball, tx: ballPos.x, ty: ballPos.y });  // 水球从当前位置出发
-    lines = []; trails = []; markers = [];
+    lines = []; trails = []; markers = []; drawnPaths = []; closePathMenu(); histClear();
     setSelected(null);
 
     running = true;                                           // 重新分布期间锁定手动操作
     const token = runToken;
-    addEntry('视角切换 · ' + VIEWS[mode].label, viewNote(mode), 'sys');
+    addEntry(bi(l => (l === 'zh' ? '视角切换 · ' : 'View Change · ') + VIEW_NAME[mode][l]), viewNote(mode), 'sys');
     requestRender();
     Promise.all(tasks.map(t =>
       animatePath(t.obj, [{ x: t.obj.x, y: t.obj.y }, { x: t.tx, y: t.ty }], 1.1, 'power2.inOut', { noTrail: true })
@@ -980,6 +1269,103 @@
       requestRender();
     });
   }
+
+
+  // =====================================================================
+  //                       一键预设阵型（白队进攻 / 蓝队防守）
+  // =====================================================================
+  // 阵型数据按“球门在左的半场”定义：X = 离球门线的距离（米），Y = 0–20 米的宽度位置（10 为中线）。
+  // 这正好就是底层米制坐标系中“左侧球门”一端的坐标，所以不需要任何像素计算：
+  //   - 底层数据始终是米；mToField() 只负责选择“摆在哪个球门前”（半场视角为左门；全景视角为白队进攻的右门，此时 X、Y 同时镜像 = 旋转 180°，仍然面向球门）；
+  //   - 画布的 px()/py() + 方向矩阵再把米转成屏幕像素。因此切到“球门在右/上/下”时，阵型自动随场地一起旋转，永远面向本方球门。
+  // 号码约定：5 号 = 中锋（蓝队 5 号 = CK 防守者），1/2 号 = 左/右边锋（侧），3/4 号 = 左/右外围，6 号 = 顶部，7 号（如有）= 居中策应。
+  const FORMATIONS = {
+    A: {
+      '33': { label: B('3-3 阵型（经典阵地战）', '3-3 Formation (classic set offense)'),
+        slots: { 5: [2, 10], 1: [5, 4], 2: [5, 16], 3: [6, 7], 4: [6, 13], 6: [6, 10], 7: [4, 10] },
+        say: B('【解析】白队摆出3-3阵地战阵型：5号中锋压在2米线要位，1、2号边锋守住5米线两侧，3、4号外围与6号顶部在6米线一线拉开，保持进攻宽度和多点威胁。',
+               '[Analysis] White sets up a 3-3 half-court formation: #5, the center forward, holds the key spot on the 2 m line; wings #1 and #2 guard both sides of the 5 m line; perimeter players #3 and #4 and top player #6 spread along the 6 m line to keep width and several threats.') },
+      '42': { label: B('4-2 阵型（多打少 6打5）', '4-2 Formation (extra-man, 6 on 5)'),
+        slots: { 5: [2, 10], 1: [6, 4], 2: [5, 7], 3: [6, 16], 4: [5, 13], 6: [6, 10], 7: [4, 10] },
+        say: B('【解析】白队切换为4-2阵型，增加外围远射点，拉扯防守空间。5号中锋仍压在2米线，两侧各一组“二人组”（1、2号与3、4号）一远一近错落，6号居中调度。',
+               '[Analysis] White switches to a 4-2 formation, adding perimeter shooting spots to stretch the defense. #5 stays on the 2 m line, with a "two-man group" on each side (#1/#2 and #3/#4) staggered near and far, and #6 in the middle as the distributor.') },
+    },
+    B: {
+      'man': { label: B('3-3 人盯人防守', '3-3 Man-to-Man Defense'), gk: [0.5, 10],
+        slots: { 5: [1.5, 10], 1: [4.5, 4], 2: [4.5, 16], 3: [5.5, 7], 4: [5.5, 13], 6: [5.5, 10], 7: [3.5, 10] },
+        say: B('【解析】蓝队采用3-3人盯人防守：5号作为CK防守者在1.5米处贴身盯防中锋，1、2号看守两翼，3、4号盯防左右外围，6号顶住顶部，守门员站在球门线中央。',
+               '[Analysis] Blue defends 3-3 man-to-man: #5, the CK defender, marks the center forward tightly at 1.5 m; #1 and #2 guard the wings, #3 and #4 pick up the left and right perimeter, #6 holds the top, and the goalkeeper stands in the middle of the goal line.') },
+      'mdrop': { label: B('M-Drop 收缩防守', 'M-Drop Collapse Defense'), gk: [0.5, 10],
+        slots: { 5: [1.5, 10], 1: [3, 6], 2: [3, 14], 3: [4, 8], 4: [4, 12], 6: [4, 10], 7: [3, 10] },
+        say: B('【解析】蓝队采用M型收缩防守，重兵囤积6米线内，保护中锋。5号继续贴防中锋，1、2号退到3米线，3、4、6号收在4米线，压缩禁区和中路空间；代价是对外围远射的压迫距离变大。',
+               '[Analysis] Blue adopts an M-shaped collapse, packing numbers inside the 6 m line to shield the middle against the center forward. #5 keeps marking the center forward, #1 and #2 drop to the 3 m line, #3, #4 and #6 sit on the 4 m line, squeezing the goal area and the middle — at the cost of a larger distance to pressure perimeter shots.') },
+    },
+  };
+  // 阵型坐标 → 当前场地上的底层米制坐标（球门所在端由视角决定：半场 = 左门；全景 = 白队进攻的右门，镜像 = 旋转 180°）
+  function mToField(X, Y) {
+    return attackSide('A') === 'L' ? { x: X, y: Y } : { x: FIELD_L - X, y: FIELD_W - Y };
+  }
+  function markFormation(team, key) {
+    document.querySelectorAll(`.formation-bar[data-fteam="${team}"] button`).forEach(b =>
+      b.setAttribute('aria-pressed', String(b.dataset.form === key)));
+  }
+
+  // 白队、蓝队的阵型动画可以同时进行（先点白队再点蓝队不会互相打断）；
+  // 但会打断正在播放的战术脚本/指令；同一队连续点击时，该队从当前位置重新出发，另一队继续原来的阵型动画。
+  const formBusy = { A: false, B: false };
+  const formCurrent = { A: null, B: null };
+  function applyFormation(team, key) {
+    if (!(FORMATIONS[team] && FORMATIONS[team][key])) return;
+    const other = team === 'A' ? 'B' : 'A';
+    if (!formBusy.A && !formBusy.B) {
+      stopAnimations();                                          // 没有阵型动画在跑：先打断战术脚本/指令
+    } else if (formBusy[team]) {
+      const keep = formBusy[other] ? formCurrent[other] : null;  // 同队重选：整体重置，再让另一队接着走
+      stopAnimations();
+      if (keep) runFormation(other, keep);
+    }
+    runFormation(team, key);
+  }
+
+  // 计算某队摆入某阵型时每名球员的目标点（按号码取点；不在阵型里的球员保持原位）
+  function formationTargets(team, key) {
+    const def = FORMATIONS[team][key];
+    const tasks = [], used = [];
+    players.filter(p => p.team === team).forEach(p => {
+      const spec = p.isGK ? def.gk : def.slots[p.num];    // 白队进攻阵型不含门将：保持原位
+      if (!spec) return;
+      const t = mToField(spec[0], spec[1]);
+      tasks.push({ obj: p, tx: t.x, ty: t.y });
+      if (!p.isGK) used.push(p.num);
+    });
+    const missing = [1, 2, 3, 4, 5, 6].filter(n => !used.includes(n));
+    const tail = missing.length ? B(`（当前场上缺少${missing.join('、')}号位，对应站位空缺。）`, ` (Currently missing #${missing.join(', #')} — those slots stay empty.)`) : B('', '');
+    const maxD = tasks.length ? Math.max(...tasks.map(t => Math.hypot(t.tx - t.obj.x, t.ty - t.obj.y))) : 0;
+    return { def, tasks, text: B(def.say.zh + tail.zh, def.say.en + tail.en), dur: clamp(maxD / (SWIM_SPEED * 1.6), 0.9, 2.4) };
+  }
+
+  function runFormation(team, key) {
+    const { def, tasks, text, dur } = formationTargets(team, key);
+    if (!tasks.length) { addEntry(B('预设阵型', 'Formation Preset'), B('没有可以摆入该阵型的球员。', 'No players available for this formation.'), 'err'); return; }
+    markFormation(team, key);
+    setSelected(null);
+    formBusy[team] = true; formCurrent[team] = key;
+    running = true;                                             // 动画期间锁定手动拖拽，防止互相打架
+    const token = runToken;
+    addEntry(bi(l => `${tn(team, l)}${l === 'zh' ? '：' : ': '}${def.label[l]}`), text);
+    activeEnts = activeEnts.concat(tasks.map(t => t.obj));
+    requestRender();
+    Promise.all(tasks.map(t =>
+      animatePath(t.obj, [{ x: t.obj.x, y: t.obj.y }, { x: t.tx, y: t.ty }], dur, 'power2.inOut', { noTrail: true })
+    )).then(() => {
+      if (token !== runToken) return;
+      formBusy[team] = false;
+      if (!formBusy.A && !formBusy.B) { running = false; activeEnts = []; }
+      requestRender();
+    });
+  }
+  document.querySelectorAll('.formation-bar button').forEach(b =>
+    b.addEventListener('click', () => applyFormation(b.parentElement.dataset.fteam, b.dataset.form)));
 
   // ===== 绘制：实体 =====
   function drawPlayer(p) {
@@ -997,14 +1383,19 @@
     ctx.lineWidth = 2;
     ctx.strokeStyle = style.capStroke;
     ctx.stroke();
-    // 号码：门将永远不画数字；场上球员由全局复选框控制
-    if (!p.isGK && showNumbers) {
-      ctx.fillStyle = style.text;
-      ctx.font = `bold ${13 * SCALE / BASE_SCALE}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      drawText(String(p.num), cx, cy + 0.5);
-    }
+    ctx.restore();
+  }
+  // 号码单独一遍绘制（所有帽子画完之后）：即使两名球员图标重叠，数字也不会被对方的帽子盖住
+  // 门将永远不画数字；场上球员由全局复选框控制
+  function drawPlayerNumber(p) {
+    if (p.isGK || !showNumbers) return;
+    const style = TEAMS[p.team];
+    ctx.save();
+    ctx.fillStyle = style.text;
+    ctx.font = `bold ${12 * SCALE / BASE_SCALE}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    drawText(String(p.num), px(p.x), py(p.y) + 0.5);
     ctx.restore();
   }
 
@@ -1078,7 +1469,7 @@
       ctx.fillStyle = '#0b2a4a';
       ctx.font = `${11 * SCALE / BASE_SCALE}px sans-serif`;
       ctx.textAlign = 'center';
-      drawText(m.label, cx, cy + 20 * SCALE / BASE_SCALE);
+      drawText(tx(m.label), cx, cy + 20 * SCALE / BASE_SCALE);
       ctx.restore();
     });
   }
@@ -1196,11 +1587,17 @@
     drawPool();
     drawMarkers();
     drawTrails();
+    drawDrawnPaths();
     lines.forEach(drawLine);
+    drawEraseHover();
     players.forEach(drawPlayer);
+    players.forEach(drawPlayerNumber);
     drawBall();
     drawActive();
     drawSelection();
+    const showPlay = drawnPaths.length > 0 && !running;       // 有画线时，画布下方浮出“播放战术”
+    if (floatPlay.hidden === showPlay) floatPlay.hidden = !showPlay;
+    syncToolbar();
   }
 
   if (window.gsap) {
@@ -1238,17 +1635,27 @@
 
   // ===== 画线模式逻辑 =====
   function describe(ent) {
-    if (ent.kind === 'ball') return '水球';
+    if (ent.kind === 'ball') return L('水球', 'the ball');
     return nameOf(ent);
   }
 
   function updateHint() {
     const h = els.hint;
-    h.classList.toggle('active', lineMode);
-    if (!lineMode) { h.textContent = '拖动球员或水球可调整位置'; return; }
-    if (!selected) h.textContent = '点击球员/水球作为起点（球员→球员：传球/跑位；水球→球门：射门）';
-    else if (selected.kind === 'ball') h.textContent = '已选中水球，请点击一个球门完成射门线';
-    else h.textContent = `已选中 ${describe(selected)}，请点击另一名球员（Esc 取消）`;
+    h.classList.toggle('active', lineMode || drawMode);
+    if (eraseMode) {
+      h.textContent = L('橡皮擦：点击（或按住拖过）一条轨迹 / 连线即可删除，Ctrl+Z 可撤销', 'Eraser: click (or drag across) a route or line to delete it — Ctrl+Z to undo');
+      return;
+    }
+    if (drawMode) {
+      if (pendingPath) h.textContent = L('请选择这条路线属于哪个球员（Esc 放弃）', 'Choose which player this route belongs to (Esc to discard)');
+      else if (selected && selected.kind === 'player') h.textContent = L(`已选中 ${describe(selected)}：拖动画线，路线会自动绑定（再点一次取消选中）`, `${describe(selected)} selected — drag to draw; the route binds automatically (tap again to deselect)`);
+      else h.textContent = L('战术画线：在场上拖动画出跑动路线（从球员身上起笔自动绑定，或先点选球员）', 'Draw mode: drag on the pitch to draw a run route (start on a player to bind it, or tap a player first)');
+      return;
+    }
+    if (!lineMode) { h.textContent = L('拖动球员或水球可调整位置', 'Drag players or the ball to reposition'); return; }
+    if (!selected) h.textContent = L('点击球员/水球作为起点（球员→球员：传球/跑位；水球→球门：射门）', 'Click a player or the ball as the start (player → player: pass / run; ball → goal: shot)');
+    else if (selected.kind === 'ball') h.textContent = L('已选中水球，请点击一个球门完成射门线', 'Ball selected — click a goal to draw the shot line');
+    else h.textContent = L(`已选中 ${describe(selected)}，请点击另一名球员（Esc 取消）`, `${describe(selected)} selected — click another player (Esc to cancel)`);
   }
 
   function setSelected(ent) {
@@ -1259,7 +1666,7 @@
 
   function addLine(type, from, to) {
     const exists = lines.some(l => l.type === type && l.from === from && l.to === to);
-    if (!exists) lines.push({ type, from, to });
+    if (!exists) { const l = { type, from, to }; lines.push(l); histPush(() => { lines = lines.filter(x => x !== l); }); }
   }
 
   function handleClick(ent, goal) {
@@ -1282,6 +1689,343 @@
     }
   }
 
+  // =====================================================================
+  //          战术画板：自由画线（跑动路线）+ 绑定球员 + 循迹动画
+  // =====================================================================
+  // 两种操作模式（面板“操作模式”，快捷键 V / D）：
+  //   选择与拖拽  —— 拖动球员/水球改变位置；打开“连线模式”后点 A 再点 B 画直线传球 / 射门线（原功能不变）
+  //   战术画线    —— 在场上按住拖动画出一条自由曲线 = 一条“跑动路线”，绑定到某个球员；点“播放战术”后该球员沿曲线跑动
+  // 画线数据全部是米制坐标（和球员一样），所以切换方向 / 旋转视角时路线会跟着场地一起转，永远不会错位。
+  const DRAW_MIN_STEP = 0.12;                   // 采点最小间距（米）
+  const pathMenu = document.getElementById('pathMenu');
+  const floatPlay = document.getElementById('floatPlay');
+
+  // Douglas–Peucker 抽稀：去掉手抖产生的冗余点，再交给 Catmull-Rom 平滑
+  function simplifyRDP(pts, eps) {
+    if (pts.length < 3) return pts.slice();
+    const keep = new Array(pts.length).fill(false);
+    keep[0] = keep[pts.length - 1] = true;
+    const stack = [[0, pts.length - 1]];
+    while (stack.length) {
+      const [a, b] = stack.pop();
+      let maxD = 0, idx = -1;
+      const A = pts[a], Bp = pts[b], dx = Bp.x - A.x, dy = Bp.y - A.y, L2 = dx * dx + dy * dy;
+      for (let i = a + 1; i < b; i++) {
+        const t = L2 ? clamp(((pts[i].x - A.x) * dx + (pts[i].y - A.y) * dy) / L2, 0, 1) : 0;
+        const d = Math.hypot(pts[i].x - (A.x + t * dx), pts[i].y - (A.y + t * dy));
+        if (d > maxD) { maxD = d; idx = i; }
+      }
+      if (maxD > eps && idx > 0) { keep[idx] = true; stack.push([a, idx], [idx, b]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  }
+
+  // 原始采样点 → 丝滑曲线（带弧长的采样点）；太短的线（< 0.8 米）视为误触，返回 null
+  function makeDrawnPath(raw) {
+    const simp = simplifyRDP(raw, 0.12);
+    if (simp.length < 2) return null;
+    const built = buildPath(simp);
+    if (built.total < 0.8) return null;
+    return { samples: built.samples, total: built.total };
+  }
+
+  // 二次贝塞尔平滑描边：以采样点为控制点、相邻点中点为锚点（实时画线与已存线条共用）
+  function strokeSmooth(pts) {
+    ctx.beginPath();
+    ctx.moveTo(px(pts[0].x), py(pts[0].y));
+    if (pts.length === 2) ctx.lineTo(px(pts[1].x), py(pts[1].y));
+    else {
+      for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(px(pts[i].x), py(pts[i].y), px(mx), py(my));
+      }
+      ctx.lineTo(px(pts[pts.length - 1].x), py(pts[pts.length - 1].y));
+    }
+    ctx.stroke();
+  }
+  // 从起点到进度 prog（0–1，按弧长）的那一段采样点
+  function partialSamples(dp, prog) {
+    const target = prog * dp.total, out = [];
+    for (const s of dp.samples) { if (s.d > target) break; out.push(s); }
+    if (prog >= 1) return dp.samples;
+    const e = pointOnPath(dp, prog);
+    out.push({ x: e.x, y: e.y });
+    return out;
+  }
+
+  const PATH_COLOR = '#ffd23f', PATH_DONE = '#19e08a';
+  // 画线颜色按球员所属球队自动分配：白队 = 白色，蓝队 = 蓝色（并配对比衬边，浅蓝水面上也看得清）
+  const teamInk = pl => pl && pl.team === 'B'
+    ? { line: '#2a63ff', under: 'rgba(255,255,255,0.65)' }
+    : pl && pl.team === 'A' ? { line: 'rgba(255,255,255,0.97)', under: 'rgba(11,42,74,0.5)' }
+    : { line: PATH_COLOR, under: 'rgba(11,42,74,0.35)' };
+  function drawDrawnPaths() {
+    if (!drawnPaths.length && !pendingPath && !(drawing && drawing.moved)) return;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const k = Math.max(0.6, SCALE / BASE_SCALE);
+    const stroke = (pts, w, color, dash) => { ctx.setLineDash(dash || []); ctx.lineWidth = w; ctx.strokeStyle = color; strokeSmooth(pts); };
+
+    drawnPaths.forEach(dp => {
+      const s = dp.samples, e = s[s.length - 1];
+      const fade = dp.done ? 0.85 : 1;
+      ctx.globalAlpha = fade;
+      const ink = teamInk(dp.player);
+      stroke(s, 6.5 * k, ink.under, [10 * k, 7 * k]);                                     // 衬边
+      stroke(s, 3.4 * k, ink.line, [10 * k, 7 * k]);                                      // 队色虚线 = 尚未跑的路线
+      if (dp.progress > 0) {                                                              // 已跑过的部分变成实心线 + 绿色光边（残影）
+        const part = partialSamples(dp, dp.progress);
+        if (part.length > 1) { stroke(part, 8.5 * k, 'rgba(25, 224, 138, 0.7)'); stroke(part, 4.2 * k, ink.line); }
+      }
+      // 终点箭头
+      const q = pointOnPath(dp, Math.max(0, 1 - 0.6 / dp.total));
+      const ang = Math.atan2(py(e.y) - py(q.y), px(e.x) - px(q.x)), ah = 11 * k;
+      ctx.setLineDash([]);
+      ctx.fillStyle = ink.line;
+      ctx.strokeStyle = 'rgba(11, 42, 74, 0.7)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(px(e.x) + Math.cos(ang) * ah * 0.6, py(e.y) + Math.sin(ang) * ah * 0.6);
+      ctx.lineTo(px(e.x) + Math.cos(ang + 2.5) * ah, py(e.y) + Math.sin(ang + 2.5) * ah);
+      ctx.lineTo(px(e.x) + Math.cos(ang - 2.5) * ah, py(e.y) + Math.sin(ang - 2.5) * ah);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // 路线中段的“球员号码”小圆标：看得出这条线属于谁
+      const mid = pointOnPath(dp, 0.5), pl = dp.player, st = pl.isGK ? TEAMS.GK : TEAMS[pl.team];
+      ctx.beginPath(); ctx.arc(px(mid.x), py(mid.y), 9 * k, 0, Math.PI * 2);
+      ctx.fillStyle = st.cap; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = st.capStroke; ctx.stroke();
+      if (!pl.isGK) {
+        ctx.fillStyle = st.text; ctx.font = `700 ${11 * k}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        drawText(String(pl.num), px(mid.x), py(mid.y) + 0.5);
+      }
+    });
+    ctx.globalAlpha = 1;
+    if (pendingPath) stroke(pendingPath.samples, 3.4 * k, '#ffa42b', [10 * k, 7 * k]);
+    if (drawing && drawing.moved && drawing.pts.length > 1) {                              // 正在画：实时的平滑曲线
+      const ink = teamInk(drawing.owner);
+      stroke(drawing.pts, 6.5 * k, ink.under);
+      stroke(drawing.pts, 3.4 * k, ink.line, [10 * k, 7 * k]);
+    }
+    ctx.restore();
+  }
+
+  // ----- 橡皮擦：命中检测（点到折线 / 线段的距离）+ 悬停高亮 -----
+  function distSeg(m, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    const t = l2 ? clamp(((m.x - a.x) * dx + (m.y - a.y) * dy) / l2, 0, 1) : 0;
+    return Math.hypot(m.x - (a.x + t * dx), m.y - (a.y + t * dy));
+  }
+  function eraseTarget(m) {
+    let best = null, bd = COARSE.matches ? 0.9 : 0.5;
+    drawnPaths.forEach(dp => { const q = dp.samples; for (let i = 0; i < q.length - 1; i++) { const d = distSeg(m, q[i], q[i + 1]); if (d < bd) { bd = d; best = { kind: 'path', ref: dp }; } } });
+    lines.forEach(l => { const d = distSeg(m, l.from, l.to); if (d < bd) { bd = d; best = { kind: 'line', ref: l }; } });
+    return best;
+  }
+  function eraseAt(m) {
+    const t = eraseTarget(m);
+    if (!t) return false;
+    if (t.kind === 'path') { const dp = t.ref; drawnPaths = drawnPaths.filter(d => d !== dp); histPush(() => { drawnPaths.push(dp); }); }
+    else { const l = t.ref; lines = lines.filter(x => x !== l); histPush(() => { lines.push(l); }); }
+    eraseHover = null; requestRender();
+    return true;
+  }
+  function drawEraseHover() {
+    if (!eraseHover) return;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(255, 64, 64, 0.8)'; ctx.lineWidth = 11 * Math.max(0.6, SCALE / BASE_SCALE);
+    ctx.setLineDash([]);
+    if (eraseHover.kind === 'path') strokeSmooth(eraseHover.ref.samples);
+    else { const l = eraseHover.ref; ctx.beginPath(); ctx.moveTo(px(l.from.x), py(l.from.y)); ctx.lineTo(px(l.to.x), py(l.to.y)); ctx.stroke(); }
+    ctx.restore();
+  }
+  const ERASER_CURSOR = 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'28\' height=\'28\'><text y=\'22\' font-size=\'22\'>🧽</text></svg>") 6 22, cell';
+  function modeCursor() { return opMode === 'draw' ? 'crosshair' : opMode === 'erase' ? ERASER_CURSOR : opMode === 'connect' ? 'pointer' : 'grab'; }
+
+  // ----- 把路线绑定到球员（每名球员只保留一条路线，新画的替换旧的）-----
+  function bindPath(player, path) {
+    const old = drawnPaths.find(d => d.player === player);
+    drawnPaths = drawnPaths.filter(d => d.player !== player);
+    const dp = { player, samples: path.samples, total: path.total, progress: 0, done: false, endPos: null };
+    drawnPaths.push(dp);
+    histPush(() => { drawnPaths = drawnPaths.filter(d => d !== dp); if (old) drawnPaths.push(old); });
+    addEntry(B('战术画线', 'Draw Routes'), B(
+      `${nameOf(player, 'zh')}的跑动路线已记录（约${path.total.toFixed(1)}米）。画好所有路线后，点“播放战术”让球员沿路线跑动。`,
+      `${nameOf(player, 'en')}'s run route is saved (about ${path.total.toFixed(1)} m). When all routes are drawn, press "Play Tactic" to run them.`), 'sys');
+    updateHint();
+    requestRender();
+  }
+
+  // ----- “这条路线属于哪个球员？”极简小菜单 -----
+  function openPathMenu(cx, cy) {
+    const start = pendingPath.samples[0];
+    let best = null, bd = Infinity;
+    players.forEach(p => { const d = Math.hypot(p.x - start.x, p.y - start.y); if (d < bd) { bd = d; best = p; } });   // 离起点最近的球员做“推荐”
+    ['A', 'B'].forEach(team => {
+      const row = pathMenu.querySelector(`.pm-row[data-team="${team}"]`);
+      row.querySelectorAll('.pm-chip').forEach(c => c.remove());
+      players.filter(p => p.team === team).sort((a, b) => (a.isGK - b.isGK) || (a.num - b.num)).forEach(p => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pm-chip ' + (p.isGK ? 'gk' : team === 'A' ? 'a' : 'b') + (p === best ? ' sug' : '');
+        b.textContent = p.isGK ? 'GK' : String(p.num);
+        b.setAttribute('aria-label', nameOf(p));
+        b.addEventListener('click', () => { const path = pendingPath; closePathMenu(); bindPath(p, path); setSelected(null); });
+        row.appendChild(b);
+      });
+    });
+    pathMenu.classList.add('open');
+    const w = pathMenu.offsetWidth, h = pathMenu.offsetHeight;
+    pathMenu.style.left = clamp(cx - w / 2, 8, window.innerWidth - w - 8) + 'px';
+    pathMenu.style.top = clamp(cy + 16, 8, window.innerHeight - h - 8) + 'px';
+    updateHint();
+    requestRender();
+  }
+  function closePathMenu() {
+    const had = !!pendingPath;
+    pendingPath = null;
+    pathMenu.classList.remove('open');
+    if (had) { updateHint(); requestRender(); }
+  }
+  pathMenu.querySelector('.pm-x').addEventListener('click', closePathMenu);
+  document.addEventListener('pointerdown', e => {                       // 点菜单以外的地方（画布除外，画布自己处理）= 放弃这条线
+    if (pendingPath && !pathMenu.contains(e.target) && e.target !== canvas) closePathMenu();
+  }, true);
+
+  // ----- 画线的指针处理（由下面的 pointerdown / move / up 转发）-----
+  function startDraw(e) {
+    if (running) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    closePathMenu();
+    const m = eventToMeters(e);
+    const ent = hitEntity(m);
+    const pl = ent && ent.kind === 'player' ? ent : null;
+    drawing = {
+      pid: e.pointerId, thr: e.pointerType === 'touch' ? 10 : DRAG_THRESHOLD, startCX: m.cx, startCY: m.cy,
+      pts: [pl ? { x: pl.x, y: pl.y } : { x: m.x, y: m.y }],            // 从球员身上起笔：起点吸附到球员
+      tapEnt: pl,
+      owner: pl || (selected && selected.kind === 'player' ? selected : null),   // 起笔在球员上 / 先选中了球员 → 自动绑定
+      moved: false,
+    };
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function moveDraw(e, m) {
+    const d = drawing;
+    if (e.pointerId !== d.pid) return;
+    if (!d.moved) {
+      if (Math.hypot(m.cx - d.startCX, m.cy - d.startCY) < d.thr) return;      // 触屏轻点不算画线
+      d.moved = true;
+    }
+    const last = d.pts[d.pts.length - 1];
+    const x = clamp(m.x, view.x0 + 0.2, view.x1 - 0.2), y = clamp(m.y, -MARGIN + 0.2, FIELD_W + MARGIN - 0.2);
+    if (Math.hypot(x - last.x, y - last.y) >= DRAW_MIN_STEP) { d.pts.push({ x, y }); requestRender(); }
+  }
+  function endDraw(e) {
+    const d = drawing;
+    if (e.pointerId !== d.pid) return;
+    drawing = null;
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    if (e.type === 'pointercancel') { requestRender(); return; }
+    if (!d.moved) {                                                    // 轻点：选中 / 取消选中球员（之后画的线自动绑定到他）
+      setSelected(d.tapEnt && selected !== d.tapEnt ? d.tapEnt : null);
+      return;
+    }
+    const m = eventToMeters(e);
+    const last = d.pts[d.pts.length - 1];
+    if (Math.hypot(m.x - last.x, m.y - last.y) > 0.05) d.pts.push({ x: clamp(m.x, view.x0 + 0.2, view.x1 - 0.2), y: clamp(m.y, -MARGIN + 0.2, FIELD_W + MARGIN - 0.2) });
+    const path = makeDrawnPath(d.pts);
+    if (!path) { els.hint.textContent = L('线太短了，请再画长一点', 'That line is too short — draw a longer one'); requestRender(); return; }
+    if (d.owner) { bindPath(d.owner, path); setSelected(null); }
+    else { pendingPath = path; openPathMenu(e.clientX, e.clientY); }
+  }
+
+  // ----- 循迹动画 -----
+  // 有 GSAP MotionPathPlugin 就用它让球员（x / y 属性）沿曲线运动；没有加载到（离线 / 被拦截）时，用内置的弧长路径动画兜底，效果相同。
+  if (window.gsap && window.MotionPathPlugin) { try { gsap.registerPlugin(MotionPathPlugin); } catch (e) {} }
+  const thinSamples = (samples, step = 0.35) => {
+    const out = [{ x: samples[0].x, y: samples[0].y }];
+    let last = samples[0];
+    for (let i = 1; i < samples.length - 1; i++) {
+      if (Math.hypot(samples[i].x - last.x, samples[i].y - last.y) >= step) { out.push({ x: samples[i].x, y: samples[i].y }); last = samples[i]; }
+    }
+    const e = samples[samples.length - 1];
+    out.push({ x: e.x, y: e.y });
+    return out;
+  };
+
+  function runDrawnPath(dp) {
+    const p = dp.player, first = dp.samples[0], end = dp.samples[dp.samples.length - 1];
+    // 重播：球员还停在上次的终点（没被拖动过）→ 先回到路线起点；被拖到别处 → 从他现在的位置出发
+    if (dp.done && dp.endPos && Math.hypot(p.x - dp.endPos.x, p.y - dp.endPos.y) < 0.3) { p.x = first.x; p.y = first.y; }
+    dp.progress = 0; dp.done = false;
+    // 起点策略：路线形状不变，球员从“当前位置”出发，先平滑切入路线起点，再严格沿画出的曲线跑到终点
+    const glide = Math.hypot(p.x - first.x, p.y - first.y);
+    const pts = thinSamples(dp.samples);
+    if (glide > 0.15) pts.unshift({ x: p.x, y: p.y }); else pts[0] = { x: p.x, y: p.y };
+    const total = (glide > 0.15 ? glide : 0) + dp.total;
+    const g = glide > 0.15 ? glide / total : 0;                      // 切入段占全程的比例（已跑颜色只算画出的那一段）
+    const dur = clamp(total / SWIM_SPEED, 0.8, 9);
+    const onT = t => { dp.progress = clamp((t - g) / (1 - g || 1), 0, 1); requestRender(); };
+    return new Promise(resolve => {
+      const finish = () => { p.x = end.x; p.y = end.y; dp.progress = 1; dp.done = true; dp.endPos = { x: end.x, y: end.y }; requestRender(); resolve(); };
+      if (window.gsap && window.MotionPathPlugin) {
+        try {
+          const tw = gsap.to(p, {
+            motionPath: { path: pts, curviness: 1.1, autoRotate: false },
+            duration: dur, ease: 'power1.inOut',
+            onUpdate: () => onT(tw.ratio),
+            onComplete: finish,
+          });
+          activeTweens.push(tw);
+          return;
+        } catch (err) { console.warn('MotionPathPlugin 不可用，改用内置路径动画', err); }
+      }
+      animatePath(p, pts, dur, 'power1.inOut', { noTrail: true, onProgress: onT }).then(finish);
+    });
+  }
+
+  async function playTactic() {
+    if (running) return;
+    const list = drawnPaths.filter(d => players.includes(d.player));
+    if (!list.length) {
+      addEntry(B('播放战术', 'Play Tactic'), B(
+        '还没有绑定球员的画线。请切换到“战术画线”模式，在场上拖动画出路线，并选择它属于哪个球员。',
+        'No routes with a player yet. Switch to "Draw Routes" mode, drag on the pitch to draw a route and choose which player runs it.'), 'err');
+      return;
+    }
+    setSelected(null);
+    closePathMenu();
+    stopAnimations();
+    running = true;                                                  // 播放期间锁定手动操作
+    const token = runToken;
+    activeEnts = list.map(d => d.player);
+    addEntry(B('播放战术', 'Play Tactic'), B(
+      '【解析】按教练画出的路线播放：' + list.map(d => `${nameOf(d.player, 'zh')}沿曲线跑动约${d.total.toFixed(1)}米`).join('；') + '。已跑过的路线会变成绿色实线；起点吸附在球员当前位置。',
+      '[Analysis] Playing the coach\'s routes: ' + list.map(d => `${nameOf(d.player, 'en')} runs the curve for about ${d.total.toFixed(1)} m`).join('; ') + '. Completed parts turn into a solid green line; each route starts from the player\'s current position.'));
+    requestRender();
+    await Promise.all(list.map(runDrawnPath));
+    if (token !== runToken) return;
+    running = false;
+    activeEnts = [];
+    requestRender();
+    if (queue.length) processQueue();
+  }
+
+  // ----- 操作模式 -----
+  function setOpMode(mode) {
+    if (!['select', 'draw', 'connect', 'erase'].includes(mode)) mode = 'select';
+    opMode = mode;
+    drawMode = mode === 'draw'; eraseMode = mode === 'erase'; lineMode = mode === 'connect';
+    document.querySelectorAll('input[name="opMode"]').forEach(r => { r.checked = r.value === mode; });   // 面板单选 ↔ 悬浮栏 双向同步
+    els.lineMode.checked = lineMode;
+    drawing = null; eraseDown = null; eraseHover = null;
+    closePathMenu();
+    document.getElementById('app').classList.toggle('draw-mode', drawMode);
+    canvas.style.cursor = modeCursor();
+    setSelected(null);                                                // 同时刷新提示条
+    syncToolbar();
+    requestRender();
+  }
+
   // ===== 指针交互：拖拽 + 点击 =====
   // 使用 Pointer Events：鼠标 / 触屏 / 手写笔共用同一套 pointerdown / pointermove / pointerup，
   // 等价于同时兼容 mousedown·mousemove·mouseup 与 touchstart·touchmove·touchend，且不会出现触屏后再触发一次鼠标事件的重复。
@@ -1295,7 +2039,12 @@
   canvas.addEventListener('pointerdown', e => {
     if (running) return;                       // 指令/战术动画播放期间锁定手动操作
     if (e.button !== undefined && e.button !== 0) return;
-    if (e.isPrimary === false || down) return;   // 忽略多指中的第二根手指
+    if (e.isPrimary === false || down || drawing) return;   // 忽略多指中的第二根手指
+    if (eraseMode) {                                        // 橡皮擦：按下即擦，按住拖动可连续擦除
+      if (e.button !== undefined && e.button !== 0) return;
+      eraseDown = e.pointerId; canvas.setPointerCapture(e.pointerId); eraseAt(eventToMeters(e)); e.preventDefault(); return;
+    }
+    if (drawMode) { startDraw(e); return; }                // 战术画线模式：按下 → 拖动 → 松开 = 一条路线
     const m = eventToMeters(e);
     const ent = hitEntity(m);
     down = {
@@ -1321,6 +2070,14 @@
 
   canvas.addEventListener('pointermove', e => {
     const m = eventToMeters(e);
+    if (drawing) { moveDraw(e, m); return; }
+    if (eraseMode) {
+      if (eraseDown !== null) { if (e.pointerId === eraseDown) eraseAt(m); return; }
+      const t = eraseTarget(m);
+      if ((t && t.ref) !== (eraseHover && eraseHover.ref)) { eraseHover = t; requestRender(); }
+      canvas.style.cursor = running ? 'default' : ERASER_CURSOR;
+      return;
+    }
     if (down) {
       if (e.pointerId !== down.pid) return;
       if (!down.ent || down.noDrag) return;
@@ -1335,19 +2092,22 @@
       return;
     }
     const ent = hitEntity(m);
-    if (ent && !running) canvas.style.cursor = lineMode ? 'pointer' : 'grab';
+    if (drawMode) canvas.style.cursor = running ? 'default' : 'crosshair';
+    else if (ent && !running) canvas.style.cursor = lineMode ? 'pointer' : 'grab';
     else if (lineMode && selected && selected.kind === 'ball' && hitGoal(m)) canvas.style.cursor = 'pointer';
-    else canvas.style.cursor = 'default';
+    else canvas.style.cursor = running ? 'default' : modeCursor();
   });
 
   function endPointer(e) {
+    if (eraseDown !== null) { if (e.pointerId === eraseDown) { eraseDown = null; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); } return; }
+    if (drawing) { endDraw(e); return; }
     if (!down || e.pointerId !== down.pid) return;
     const d = down;
     down = null;
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     if (!d.moved && e.type !== 'pointercancel') handleClick(d.ent, d.goal);
     const m = eventToMeters(e);
-    canvas.style.cursor = hitEntity(m) ? (lineMode ? 'pointer' : 'grab') : 'default';
+    canvas.style.cursor = hitEntity(m) ? (lineMode ? 'pointer' : 'grab') : modeCursor();
   }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
@@ -1449,6 +2209,7 @@
         if (Math.hypot(p.x - last.x, p.y - last.y) >= 0.12) trail.pts.push({ x: p.x, y: p.y });
       }
       requestRender();
+      if (opts.onProgress) opts.onProgress(proxy.t);
     };
     return new Promise(resolve => {
       const finish = () => {
@@ -1504,7 +2265,7 @@
   // 单个路径片段：[从X] 游向/移动到 Y [绕过Z] [交叉补位]
   const SEG_RE = new RegExp(
     '^(?:从(?<from>.+?))?' +
-    '(?:游向|游到|游至|游往|移动到|移动至|移动向|移到|移至|跑到|跑向|前往|前插到|插到|切入|穿插到|冲向|走向|回到|回防到|补位到|站到|向|到|至)' +
+    '(?:游向|游到|游至|游往|移动到|移动至|移动向|移到|移至|跑到|跑向|前往|前插到|插到|切入|穿插到|冲向|走向|回到|回防到|退防到|退防至|退守到|退回到|退到|回撤到|撤到|拉到|落位到|补位到|站到|向|到|至)' +
     '(?<to>.+?)' +
     '(?:并?(?:绕过|绕开|绕行|避开)(?<by>.+?))?' +
     '(?<cross>交叉补位|交叉换位|补位|换位)?$');
@@ -1536,6 +2297,157 @@
     return groups;
   }
 
+  // =====================================================================
+  //          英文指令 → 规范中文指令（交给同一套中文解析器，保证两种语言行为一致）
+  // =====================================================================
+  // 支持（大小写、标点随意）：
+  //   White 5 move to center / Blue 3 move to left perimeter / White 1 retreat to left wing / White 3 move to the left side of the 6m line
+  //   White 4-2 formation / White team formation 3-3 / Blue M-drop / Blue 3-3 man-to-man
+  //   White ball pass to 4 / White 3 pass to Blue 4 / White shoot / Blue 5 shoot / White all push up / Blue 2 take the ball
+  //   White 2 swim from the wing to the middle around Blue's center forward, then swim to 1's position; at the same time White 1 cross-swap to 2's initial position
+  const EN_NUMS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+  const NUMW = '\\d{1,2}|one|two|three|four|five|six|seven|eight';
+  const GKW = 'goalkeeper|goalie|keeper|gk';
+  const TEAMW = '(?:white|blue)(?:\\s+(?:team|cap|caps|side))?|team\\s*[ab]';
+  const PLYW = '(?:(?:player|no\\.?|number|#)\\s*)?';
+  const enNum = w => (/^\d+$/.test(w) ? parseInt(w, 10) : EN_NUMS[w.toLowerCase()]);
+  const enWho = w => (/^(?:goalkeeper|goalie|keeper|gk)$/i.test(w) ? '守门员' : enNum(w) + '号');
+  const enTeam = w => (/^(?:white|team\s*a)/i.test(w) ? '白队' : '蓝队');
+  const isEnglishInput = s => !/[㐀-鿿]/.test(s) && /[a-z]/i.test(s);   // 不含汉字且含英文字母：当作英文指令
+
+  // 英文位置短语 → 中文位置短语（交给 resolveSpot）；认不出来返回 null
+  function enTarget(raw, asObst) {
+    let s = raw.toLowerCase().replace(/[’`]/g, "'").replace(/[.!?,]+$/, '').trim();
+    s = s.replace(/^(?:the|a|an)\s+/, '').replace(/^(?:to|towards?|toward|into|onto|at|in|on)\s+(?:the\s+)?/, '').trim();
+    s = s.replace(/\b(white|blue)'s\b/g, '$1');
+    if (!s) return null;
+    let m;
+    const end = /\b(?:own|our|defensive|defending|home)\b/.test(s) ? '己方' : /\b(?:opponent'?s?|opposing|their|attacking|offensive)\b/.test(s) ? '对方' : '';
+    const side = /\bleft\b/.test(s) ? '左侧' : /\bright\b/.test(s) ? '右侧' : '';
+    const vert = /\b(?:upper|top side|above)\b/.test(s) ? '上方' : /\b(?:lower|bottom side|below)\b/.test(s) ? '下方' : '';
+
+    if (/\b(?:pool|water|field|pitch)\s+cent(?:er|re)\b|\bcent(?:er|re)\s+of\s+(?:the\s+)?(?:pool|water|field|pitch)\b|\b(?:middle|mid)\s+of\s+(?:the\s+)?(?:pool|water|field|pitch)\b|\bmid[- ]?pool\b/.test(s)) return '场地中心' + side + vert;
+    if (/\b(?:cent(?:er|re)|mid)[- ]?(?:point|mark|dot)\b/.test(s)) return '中心点';
+
+    // 球员位置：4 / player 4 / blue 3's position / 2's initial position / near 4
+    const nm = /^(?:near|next to|beside|close to|by)\s+(.+)$/.exec(s);
+    const inner = nm ? nm[1].replace(/^the\s+/, '') : s;
+    if (nm && /\bball\b/.test(inner)) return '水球附近';
+    if ((m = new RegExp(`^(?:(white|blue)(?:\\s+team)?\\s+)?${PLYW}(${NUMW}|${GKW})(?:'s)?(?:\\s+(initial|starting|original))?(?:\\s+(?:position|spot|place|location))?$`).exec(inner))) {
+      return (m[1] ? enTeam(m[1]) : '') + enWho(m[2]) + (nm ? '附近' : (m[3] ? '初始位置' : '位置'));
+    }
+
+    if ((m = /(\d{1,2})\s*-?\s*(?:m|meters?|metres?)\b(?:\s*line)?/.exec(s))) return end + m[1] + '米线' + side + vert;
+    if (/\b(?:goalkeeper|goalie|keeper|gk)'?s?\s+(?:position|spot|area|zone|box)\b/.test(s)) return '门将区';
+    if (/\b(?:goal|penalty)\s*(?:area|zone|box)\b/.test(s)) return end + '禁区';
+    if (/\bhalf[- ]?way\b|\bmid[- ]?line\b|\bcent(?:er|re)\s+line\b|\bhalf[- ]?court\b/.test(s)) return end + '中线' + side + vert;
+
+    const teamIn = /\b(white|blue)\b/.exec(s);
+    if (/\bcent(?:er|re)[- ]forward\b|\bcf\b|\bhole(?:[- ]?set)?\b|\bhole defender\b/.test(s)) {
+      if (/\b(?:position|spot|zone|area)\b/.test(s)) return '中锋位置';
+      if (teamIn) return enTeam(teamIn[1]) + '中锋';
+      if (!asObst && /\bhole\b/.test(s)) return '中锋位置';
+      return '中锋';
+    }
+    if (/^cent(?:er|re)(?:\s+(?:position|spot|zone|area))?$/.test(s)) return asObst ? '中锋' : '中锋位置';
+
+    if (/\bleft[- ]?(?:wing|winger)\b/.test(s)) return '左翼';
+    if (/\bright[- ]?(?:wing|winger)\b/.test(s)) return '右翼';
+    if (/\b(?:perimeter|perim|outside|outer)\b/.test(s) && side) return side === '左侧' ? '左外围' : '右外围';
+    if (/^(?:top|top\s+(?:spot|position|zone|area|point)|top of the (?:arc|key|zone|perimeter)|arc|the arc|point)$/.test(s)) return '顶部';
+    if (/\bgoal\b/.test(s)) return end + '球门前';
+    if (/\bball\b/.test(s)) return '水球附近';
+    if (/\b(?:middle|midway|central|center lane|centre lane)\b/.test(s)) return '中间';
+    if (/\b(?:wing|flank|sideline|touchline|side lane|side)\b/.test(s)) return '侧翼';
+    return null;
+  }
+
+  // 一个路径片段：[from X] [verb] [to] Y [around Z] [cross-swap]
+  function enMoveSeg(seg) {
+    let s = seg.toLowerCase().replace(/[’`]/g, "'").trim().replace(/[.!?]+$/, '').replace(/^(?:and|then|next|afterwards|after that)\s+/, '');
+    let cross = false;
+    s = s.replace(/\b(?:cross[- ]?swap(?:s|ping)?|swap(?:s|ping)?(?:\s+(?:places|positions))?|cross(?:es|ing)?(?:\s+over)?)\b(?:\s+with\s+(?:a\s+|the\s+)?\w+)?/, () => { cross = true; return ' '; }).trim();
+    let by = null;
+    s = s.replace(/\s*\b(?:going\s+around|swimming\s+around|around|past|avoiding|avoid|bypassing|bypass|dodging|circling)\s+(.+)$/, (_, o) => { by = enTarget(o, true) || o; return ''; }).trim();
+    let verb = '移动到';
+    const vm = /^(?:(?:will|should|then|now|also)\s+)*(swim|swims|swimming|move|moves|moving|go|goes|going|run|runs|running|head|heads|heading|sprint|sprints|drive|drives|cut|cuts|slide|slides|drop|drops|dropping|fall|falls|retreat|retreats|retreating|return|returns|recover|recovers|step|steps|shift|shifts|relocate|relocates|rotate|rotates|position|positions)\b(?:\s+(back))?\s*/.exec(s);
+    if (vm) {
+      if (vm[2] || /^(?:retreat|return|recover|fall|drop)/.test(vm[1])) verb = '退防到';
+      else if (/^swim/.test(vm[1])) verb = '游向';
+      s = s.slice(vm[0].length);
+    }
+    let from = null, to = s;
+    const fm = /^from\s+(.+?)\s+(?:to|towards?|toward|into|onto|at)\s+(.+)$/.exec(s);
+    if (fm) { from = enTarget(fm[1]) || fm[1]; to = fm[2]; }
+    const T = enTarget(to);
+    if (!T) return null;
+    return (from ? '从' + from : '') + verb + T + (by ? '绕过' + by : '') + (cross ? '交叉补位' : '');
+  }
+
+  // 一整条英文指令（不含“然后 / 同时”连接）→ 规范中文指令
+  function enClause(c) {
+    const s = c.replace(/[’`]/g, "'").replace(/[.!?]+$/, '').replace(/\s+/g, ' ').trim();
+    if (!s) return null;
+    const tm = new RegExp(`^(?:the\\s+)?(${TEAMW})\\b[,:]?\\s*(.*)$`, 'i').exec(s);
+    const T = tm ? enTeam(tm[1]) : '';
+    const rest = (tm ? tm[2] : s).trim();
+    const low = rest.toLowerCase();
+    const pm = new RegExp(`^${PLYW}(${NUMW}|${GKW})\\b\\s*(.*)$`, 'i').exec(rest);
+    let m;
+
+    if (T) {                                                                   // 阵型
+      if (/\bm[- ]?drop\b|\bm[- ]?shape\b/.test(low)) return T + '收缩M-drop';
+      if (/\bman[- ]?(?:to|2)?[- ]?man\b|\bman[- ]?(?:marking|defen[cs]e)\b/.test(low)) return T + '3-3人盯人';
+      if ((m = /\b([34])\s*[-–—:]\s*([23])\b/.exec(low))) return T + '变阵' + m[1] + '-' + m[2];
+    }
+    if (T && !pm && /\b(?:all|everyone|everybody|whole team|entire team)\b[\s\S]*\b(?:push|press|attack|surge|advance|forward)|\ball[- ]out\b|\bpush(?:es)?\s+up\b|\bfull\s+press\b/.test(low)) return T + '全员压上';
+
+    const PASS = `(?:(?:will|should|then)\\s+)?(?:pass|passes|passing|throw|throws|feed|feeds)(?:\\s+(?:the\\s+)?ball)?\\s+(?:to|towards?|toward|for)\\s+(?:(white|blue)(?:\\s+team)?\\s+)?${PLYW}(${NUMW}|${GKW})\\b`;
+    const SHOOT = '(?:(?:will|should|then)\\s+)?(?:shoot|shoots|shot|fire|fires|(?:take|takes)\\s+(?:a\\s+|the\\s+)?(?:long\\s+)?shot)\\b';
+    const TAKE = '(?:(?:will|should|then)\\s+)?(?:take|takes|get|gets|grab|grabs|win|wins|steal|steals|pick(?:s)?\\s+up|go(?:es)?\\s+for|swim(?:s)?\\s+for|receive|receives|fetch(?:es)?)\\s+(?:the\\s+)?(?:ball|possession)\\b';
+
+    if (pm) {
+      const who = enWho(pm[1]), r2 = pm[2].toLowerCase().trim();
+      if (T && new RegExp(`^${TAKE}`).test(r2)) return T + who + '拿球';
+      if (new RegExp(`^${SHOOT}`).test(r2)) return T + who + '射门';
+      if ((m = new RegExp(`^${PASS}`).exec(r2))) return T + who + '传给' + (m[1] ? enTeam(m[1]) : '') + enWho(m[2]);
+      if (T) {                                                                 // 跑位：一串路径片段
+        const parts = r2.split(/\s*(?:,|;)?\s*\b(?:and then|then|afterwards|after that|next)\b\s*,?\s*|\s*,\s*/).filter(Boolean);
+        const zhSegs = parts.map(enMoveSeg);
+        if (!zhSegs.length || zhSegs.some(x => !x)) return null;
+        return T + who + zhSegs.join('，');
+      }
+      return null;
+    }
+    if ((m = new RegExp(`^(ball\\s+)?${PASS}`).exec(low))) return T + (m[1] ? '水球' : '') + '传给' + (m[2] ? enTeam(m[2]) : '') + enWho(m[3]);
+    if (new RegExp(`^${SHOOT}`).test(low)) return T + '射门';
+    return null;
+  }
+
+  // 整段英文输入 → 指令组（“then / afterwards / ;” 顺序执行，“at the same time / meanwhile / and + 队名” 并行执行）
+  function parseEnglish(raw) {
+    const AHEAD = '(?=(?:the\\s+)?(?:white|blue|team\\s*[ab])\\b)';
+    const s = raw.replace(/[’`]/g, "'").replace(/\n+/g, ' ; ').trim()
+      .replace(new RegExp(`\\s*[,;]?\\s*\\b(?:and\\s+)?(?:at the same time|meanwhile|in the meantime|simultaneously|while)\\b\\s*,?\\s*${AHEAD}`, 'gi'), '@P@')
+      .replace(new RegExp(`\\s*[,;]?\\s*\\band\\s+${AHEAD}`, 'gi'), '@P@')
+      .replace(new RegExp(`\\s*[,;.]?\\s*\\b(?:and\\s+)?(?:then|afterwards|after that|next|followed by)\\b\\s*,?\\s*${AHEAD}`, 'gi'), '@S@')
+      .replace(/\s*;\s*/g, '@S@')
+      .replace(/\.\s+(?=[A-Za-z])/g, '@S@');
+    const groups = [];
+    let par = false;
+    s.split(/(@P@|@S@)/).forEach(p => {
+      if (p === '@P@') { par = true; return; }
+      if (p === '@S@') { par = false; return; }
+      const piece = p.trim().replace(/^[,;\s]+|[,;\s]+$/g, '');
+      if (!piece) return;
+      const zh = enClause(piece) || piece;                    // 译不出来就保留原文，交给解析器报“无法识别”
+      if (zh !== piece) clauseLabel.set(zh, piece);
+      if (par && groups.length) groups[groups.length - 1].push(zh); else groups.push([zh]);
+      par = false;
+    });
+    return groups;
+  }
+
   function parseTarget(s) {
     const t = { end: null, lat: null, vert: null, kind: null };
     if (/己方|本方|我方|自己|防守|后场/.test(s)) t.end = 'own';
@@ -1558,7 +2470,9 @@
 
   // ===== 工具函数 =====
   const GA_TOP = (FIELD_W - GOAL_AREA_W) / 2, GA_BOTTOM = GA_TOP + GOAL_AREA_W;
-  const nameOf = p => `${TEAMS[p.team].name}${p.isGK ? '守门员' : p.num + '号'}`;
+  const nameOf = (p, l = currentLang) => (l === 'en'
+    ? `${TEAMS[p.team].en} ${p.isGK ? 'goalkeeper' : '#' + p.num}`
+    : `${TEAMS[p.team].name}${p.isGK ? '守门员' : p.num + '号'}`);
   // “6打5”按场上球员人数计算（不含门将）
   const countOf = team => players.filter(p => p.team === team && !p.isGK).length;
 
@@ -1567,13 +2481,16 @@
     const list = players.filter(p => p.team === team);
     if (gk) {
       const g = list.find(p => p.isGK);
-      return g ? { p: g } : { error: `${TEAMS[team].name}当前没有守门员。` };
+      return g ? { p: g } : { error: B(`${tn(team, 'zh')}当前没有守门员。`, `${tn(team, 'en')} has no goalkeeper on the pitch.`) };
     }
     const n = toNum(numStr);
     const p = list.find(q => !q.isGK && q.num === n);
     if (p) return { p };
-    const nums = list.filter(q => !q.isGK).map(q => q.num).sort((a, b) => a - b).join('、');
-    return { error: `${TEAMS[team].name}场上没有 ${n} 号球员（当前号码：${nums}${list.some(q => q.isGK) ? '；门将请写“守门员”' : ''}）。` };
+    const nums = list.filter(q => !q.isGK).map(q => q.num).sort((a, b) => a - b);
+    const hasGK = list.some(q => q.isGK);
+    return { error: B(
+      `${tn(team, 'zh')}场上没有 ${n} 号球员（当前号码：${nums.join('、')}${hasGK ? '；门将请写“守门员”' : ''}）。`,
+      `${tn(team, 'en')} has no #${n} field player (current numbers: ${nums.join(', ')}${hasGK ? '; for the goalkeeper write "goalkeeper"' : ''}).`) };
   }
 
   function nearestOf(team, maxD) {
@@ -1619,26 +2536,30 @@
     const end = side === aSide ? 'opp' : 'own';
     const gx = goalXOf(side), dir = side === 'L' ? 1 : -1;
     const endName = end === 'own' ? '己方' : '对方';
+    const endThe = end === 'own' ? 'its own' : "the opponent's";
     const latText = t.lat === 'left' ? '左侧' : t.lat === 'right' ? '右侧' : '';
     const vertText = t.vert === 'up' ? '上方' : t.vert === 'down' ? '下方' : '';
     const mod = latText + vertText;
+    const modEn = [t.lat === 'left' ? 'left side' : t.lat === 'right' ? 'right side' : '', t.vert === 'up' ? 'upper side' : t.vert === 'down' ? 'lower side' : '']
+      .filter(Boolean).join(', ');
+    const modB = modEn ? ` (${modEn})` : '';
 
-    let x = base.x, y = base.y, text = '';
+    let x = base.x, y = base.y, text = B('', '');
     switch (t.kind) {
       case 'line':
-        x = gx + dir * t.d; text = `${endName}${t.d}米线${mod}`; break;
+        x = gx + dir * t.d; text = B(`${endName}${t.d}米线${mod}`, `${endThe} ${t.d} m line${modB}`); break;
       case 'area':
         x = gx + dir * (mover.isGK ? 0.7 : 1.0);
         y = clamp(y, GA_TOP + 0.8, GA_BOTTOM - 0.8);
-        text = `${endName}球门区`; break;
+        text = B(`${endName}球门区`, `${endThe} goal area`); break;
       case 'mid':
-        x = FIELD_L / 2; text = `中线${mod}`; break;
+        x = FIELD_L / 2; text = B(`中线${mod}`, `the halfway line${modB}`); break;
       case 'center':
-        x = FIELD_L / 2; y = FIELD_W / 2; text = `场地中心${mod}`; break;
+        x = FIELD_L / 2; y = FIELD_W / 2; text = B(`场地中心${mod}`, `the pool center${modB}`); break;
       case 'goal':
-        x = gx + dir * (mover.isGK ? 0.7 : 1.6); y = FIELD_W / 2; text = `${endName}球门前`; break;
+        x = gx + dir * (mover.isGK ? 0.7 : 1.6); y = FIELD_W / 2; text = B(`${endName}球门前`, `the front of ${endThe} goal`); break;
       case 'ball':
-        x = ball.x - attackDir(mover.team) * 0.9; y = ball.y; text = '水球附近'; break;
+        x = ball.x - attackDir(mover.team) * 0.9; y = ball.y; text = B('水球附近', 'the ball'); break;
     }
     if (t.kind === 'line' || t.kind === 'mid' || t.kind === 'center') {
       if (t.lat) x += t.lat === 'left' ? -1 : 1;
@@ -1655,11 +2576,18 @@
   // 支持：某号球员的位置 / 初始位置 / 附近、蓝队中锋、侧翼(左翼/右翼)、中间/中路，以及 2/5/6米线、禁区、中线、球门前、场地中心、水球 等
   function resolveSpot(spec, mover, base) {
     let m;
+    const zk = zoneKeyOf(spec);
+    if (zk) {                                                  // 区域代称：中锋位 / 左翼 / 右翼 / 左外围 / 右外围 / 顶部 / 门将区
+      const Z = ZONES[zk];
+      const defender = mover.team === 'B' && zk !== 'gk';      // 防守方站在对应进攻点的“门前侧”0.5 米
+      const f = mToField(Math.max(0.5, Z.xy[0] - (defender ? 0.5 : 0)), Z.xy[1]);
+      return { x: f.x, y: f.y, label: Z.name, zone: Z, zoneRole: defender ? 'B' : 'A' };
+    }
     if ((m = RE_CF.exec(spec))) {
       const team = m[1] ? teamOf(m[1]) : (mover.team === 'A' ? 'B' : 'A');
       const p = centerForward(team, mover);
-      if (!p) return { error: `${TEAMS[team].name}场上没有可作为中锋的球员。` };
-      return { x: p.x, y: p.y, label: `${nameOf(p)}（中锋）的位置`, ref: p };
+      if (!p) return { error: B(`${tn(team, 'zh')}场上没有可作为中锋的球员。`, `${tn(team, 'en')} has no field player who can act as the center forward.`) };
+      return { x: p.x, y: p.y, label: B(`${nameOf(p, 'zh')}（中锋）的位置`, `${nameOf(p, 'en')} (center forward)'s position`), ref: p };
     }
     if ((m = RE_PREF.exec(spec))) {
       const team = m[1] ? teamOf(m[1]) : mover.team;
@@ -1671,7 +2599,7 @@
         const d = d2(p, base) || 1;
         x = p.x + (base.x - p.x) / d * 1.3; y = p.y + (base.y - p.y) / d * 1.3;
       }
-      return { x, y, label: `${nameOf(p)}${m[4] ? '的初始位置' : '的位置'}`, ref: p };
+      return { x, y, label: B(`${nameOf(p, 'zh')}${m[4] ? '的初始位置' : '的位置'}`, `${nameOf(p, 'en')}'s ${m[4] ? 'initial ' : ''}position`), ref: p };
     }
     if (/左翼|右翼|侧翼|边路|边线|边上/.test(spec)) {
       // 左/右以各队进攻方向为准：面朝右侧球门时左翼在屏幕上侧，面朝左侧球门时左翼在屏幕下侧
@@ -1680,24 +2608,32 @@
       if (/左翼/.test(spec)) top = leftIsTop;
       else if (/右翼/.test(spec)) top = !leftIsTop;
       else top = base.y < FIELD_W / 2;
-      return { x: base.x, y: top ? 2.5 : FIELD_W - 2.5, label: /左翼|右翼/.test(spec) ? (/左翼/.test(spec) ? '左翼' : '右翼') : (top ? '上侧边路' : '下侧边路') };
+      const lab = /左翼/.test(spec) ? B('左翼', 'the left wing') : /右翼/.test(spec) ? B('右翼', 'the right wing')
+        : (top ? B('上侧边路', 'the upper side lane') : B('下侧边路', 'the lower side lane'));
+      return { x: base.x, y: top ? 2.5 : FIELD_W - 2.5, label: lab };
     }
-    if (/^(中间|中路|中央)$/.test(spec)) return { x: base.x, y: FIELD_W / 2, label: '中路', isMiddle: true };
+    if (/^(中间|中路|中央)$/.test(spec)) return { x: base.x, y: FIELD_W / 2, label: B('中路', 'the middle lane'), isMiddle: true };
 
     const t = parseTarget(spec);
-    if (!t) return { error: `无法识别位置“${spec}”。可用：某号球员的位置/初始位置、蓝队中锋、侧翼、中间、2/5/6米线、禁区、中线、球门前、场地中心、水球。` };
+    if (!t) return { error: B(
+      `无法识别位置“${spec}”。可用：某号球员的位置/初始位置、蓝队中锋、侧翼、中间、2/5/6米线、禁区、中线、球门前、场地中心、水球。`,
+      `Cannot recognise the position "${spec}". Available: a player's position / initial position, the opposing center forward, wing, middle, 2/5/6 m line, goal area, halfway line, in front of goal, pool center, the ball; zones: center, left/right wing, left/right perimeter, top.`) };
     const res = resolveTarget(t, mover, base);
-    if (res.out) return { error: `“${spec}”在当前半场视角之外（右半场）。请切换到全场视角，或改写成指向左侧的位置。` };
+    if (res.out) return { error: B(
+      `“${spec}”在当前半场视角之外（右半场）。请切换到全场视角，或改写成指向左侧的位置。`,
+      `${cap1(res.text.en)} is outside the current half-pitch view (right half). Switch to full-pitch view, or phrase a position on the left side.`) };
     return { x: res.x, y: res.y, label: res.text, res };
   }
 
   // 要“绕过”的对象：中心点、中锋、某号球员
   function resolveObstacle(spec, mover) {
-    if (/^(场地)?(中心点?|中点|中央)$/.test(spec)) return { x: FIELD_L / 2, y: FIELD_W / 2, r: 2.6, label: '场地中心点' };
+    if (/^(场地)?(中心点?|中点|中央)$/.test(spec)) return { x: FIELD_L / 2, y: FIELD_W / 2, r: 2.6, label: B('场地中心点', 'the pool center point') };
     const s = resolveSpot(spec, mover, { x: mover.x, y: mover.y });
     if (s.error) return s;
-    if (!s.ref) return { error: `“${spec}”不是可以绕过的对象，请写“蓝队中锋”“蓝队3号”或“中心点”。` };
-    return { x: s.ref.x, y: s.ref.y, r: 1.7, label: s.label.replace(/的(初始)?位置$/, '') };
+    if (!s.ref) return { error: B(
+      `“${spec}”不是可以绕过的对象，请写“蓝队中锋”“蓝队3号”或“中心点”。`,
+      `"${spec}" is not something to swim around — write "Blue center forward", "Blue 3" or "center point".`) };
+    return { x: s.ref.x, y: s.ref.y, r: 1.7, label: B(s.label.zh.replace(/的(初始)?位置$/, ''), s.label.en.replace(/'s (initial )?position$/, '')) };
   }
 
   // 绕过障碍物时的侧面路点：取 S→Y→E 总路程更短的一侧（并列时走离起点所在边线更近的一侧）
@@ -1719,41 +2655,46 @@
     return { x: (S.x + E.x) / 2 - dy / L * k, y: (S.y + E.y) / 2 + dx / L * k };
   }
 
-  // ===== 讲解文案生成 =====
-  function condPhrase(team) {
+  // ===== 讲解文案生成（中 / 英） =====
+  function condPhrase(team, l = 'zh') {
     const a = countOf(team), b = countOf(team === 'A' ? 'B' : 'A');
+    if (l === 'en') return a > b ? `with the ${a}-on-${b} numerical advantage` : a === b ? `at ${a}-on-${b} parity` : `at a ${a}-on-${b} numerical disadvantage`;
     if (a > b) return `利用${a}打${b}的人数优势`;
     if (a === b) return `在${a}打${b}的均势下`;
     return `在${a}打${b}的人数劣势下`;
   }
 
-  function movePurpose(r, mover) {
+  function movePurpose(r, mover, l = 'zh') {
+    const zh = l === 'zh';
     const own = r.end === 'own';
-    const lat = r.lat === 'left' ? '左' : r.lat === 'right' ? '右' : '';
+    const lat = r.lat === 'left' ? (zh ? '左' : 'left') : r.lat === 'right' ? (zh ? '右' : 'right') : '';
     const spread = lat
-      ? (own ? `，并向${lat}侧补位，封堵传球线路` : `，并向${lat}侧拉开，扩大进攻宽度、牵制防守`)
+      ? (zh ? (own ? `，并向${lat}侧补位，封堵传球线路` : `，并向${lat}侧拉开，扩大进攻宽度、牵制防守`)
+            : (own ? `, shifting to the ${lat} side to cover and block passing lanes` : `, spreading to the ${lat} side to widen the attack and tie down the defense`))
       : '';
     switch (r.kind) {
       case 'line':
-        if (own) return `回收到己方${r.d}米线，收缩防线、保护球门前沿${spread}`;
-        if (r.d === 2) return `贴近球门前沿，伺机接球转身或抢点，制造近距离威胁${spread}`;
-        if (r.d === 5) return `到达5米线附近，可兼顾中距离射门和战术配合${spread}`;
-        if (r.d === 6) return `寻找空位，接应外围传球并随时形成射门威胁${spread}`;
-        return `调整站位、保持场上间距${spread}`;
+        if (own) return zh ? `回收到己方${r.d}米线，收缩防线、保护球门前沿${spread}` : `dropping back to its own ${r.d} m line to tighten the defense and protect the front of the goal${spread}`;
+        if (r.d === 2) return zh ? `贴近球门前沿，伺机接球转身或抢点，制造近距离威胁${spread}` : `getting close to the front of the goal, ready to receive and turn or attack a rebound, creating close-range danger${spread}`;
+        if (r.d === 5) return zh ? `到达5米线附近，可兼顾中距离射门和战术配合${spread}` : `reaching the 5 m line area, able to combine mid-range shots with team play${spread}`;
+        if (r.d === 6) return zh ? `寻找空位，接应外围传球并随时形成射门威胁${spread}` : `finding open space to receive perimeter passes and keep a shooting threat${spread}`;
+        return zh ? `调整站位、保持场上间距${spread}` : `adjusting position to keep spacing${spread}`;
       case 'area':
-        if (mover.isGK) return '回到球门区内，重新封堵门前角度';
-        return own ? '回收到己方球门区，贴近球门协助防守' : '压入对方球门区附近，争取近距离接球和二次进攻机会';
+        if (mover.isGK) return zh ? '回到球门区内，重新封堵门前角度' : 'returning to the goal area to close the angle in front of goal again';
+        return own ? (zh ? '回收到己方球门区，贴近球门协助防守' : 'dropping into its own goal area, staying close to the goal to help defend')
+                   : (zh ? '压入对方球门区附近，争取近距离接球和二次进攻机会' : "pushing into the opponent's goal area for close-range receptions and second-chance attacks");
       case 'mid':
-        return `回到中线附近，参与攻防转换、保持场上纵深${spread}`;
+        return zh ? `回到中线附近，参与攻防转换、保持场上纵深${spread}` : `returning to the halfway line to join the transition and keep depth${spread}`;
       case 'goal':
-        if (mover.isGK) return '守在门前，缩小射门角度';
-        return own ? '回到己方门前，协防封堵射门路线' : '压到对方球门前，抢占点位准备补射或抢点';
+        if (mover.isGK) return zh ? '守在门前，缩小射门角度' : 'staying in front of the goal to narrow the shooting angle';
+        return own ? (zh ? '回到己方门前，协防封堵射门路线' : 'getting back in front of its own goal to help block shooting lanes')
+                   : (zh ? '压到对方球门前，抢占点位准备补射或抢点' : "pressing in front of the opponent's goal to take a spot for a rebound or tip-in");
       case 'center':
-        return '回到场地中心，重新组织站位';
+        return zh ? '回到场地中心，重新组织站位' : 'returning to the pool center to reorganize';
       case 'ball':
-        return '靠近水球，准备接应、争抢球权或对持球人施压';
+        return zh ? '靠近水球，准备接应、争抢球权或对持球人施压' : 'closing in on the ball to receive, contest possession or pressure the carrier';
     }
-    return '调整站位';
+    return zh ? '调整站位' : 'adjusting position';
   }
 
   // ===== 计划构建：把一条指令变成“要播放的动画轨道 + 要显示的讲解” =====
@@ -1766,20 +2707,23 @@
   function planAllIn(g) {
     const team = teamOf(g.team);
     const side = attackSide(team), gx = goalXOf(side), dir = attackDir(team);
-    if (gx > view.x1 - 0.2) return { error: `${TEAMS[team].name}进攻的球门在当前半场视角之外，请先切换到全场视角。` };
+    if (gx > view.x1 - 0.2) return { error: B(`${tn(team, 'zh')}进攻的球门在当前半场视角之外，请先切换到全场视角。`, `${tn(team, 'en')} attacks a goal outside the current half-pitch view — switch to full-pitch view first.`) };
     const movers = players.filter(p => p.team === team && !p.isGK).sort((a, b) => a.y - b.y);
-    if (!movers.length) return { error: `${TEAMS[team].name}场上没有可移动的球员。` };
+    if (!movers.length) return { error: B(`${tn(team, 'zh')}场上没有可移动的球员。`, `${tn(team, 'en')} has no field players who can move.`) };
     const n = movers.length;
     const tracks = movers.map((p, i) => {
       const y = n === 1 ? FIELD_W / 2 : 2.8 + (FIELD_W - 5.6) * i / (n - 1);          // 按当前 y 顺序分配，避免互相穿插
       const edge = Math.abs(y - FIELD_W / 2) / (FIELD_W / 2);                           // 边路稍靠后，中路更靠前，形成弧形
       const dist = 6.6 + 2.2 * edge + (i % 2 ? 0.5 : 0);
-      const tx = clamp(gx - dir * dist, 0.8, FIELD_L - 0.8);
-      return { obj: p, wps: [{ x: p.x, y: p.y }, { x: tx, y }], dur: 1.9, ease: 'power2.inOut' };
+      const tx_ = clamp(gx - dir * dist, 0.8, FIELD_L - 0.8);
+      return { obj: p, wps: [{ x: p.x, y: p.y }, { x: tx_, y }], dur: 1.9, ease: 'power2.inOut' };
     });
     const ownGK = players.some(p => p.team === team && p.isGK);
-    const explain = `【解析】${TEAMS[team].name}${n}名场上球员全线压上，在对方6米线外沿弧形展开，` +
-      `${ownGK ? '门将留守后场，' : '无门将，全员投入进攻，'}用人数和宽度逼迫对方收缩防守，随时准备传导或起射。`;
+    const explain = B(
+      `【解析】${tn(team, 'zh')}${n}名场上球员全线压上，在对方6米线外沿弧形展开，` +
+      `${ownGK ? '门将留守后场，' : '无门将，全员投入进攻，'}用人数和宽度逼迫对方收缩防守，随时准备传导或起射。`,
+      `[Analysis] ${n} ${tn(team, 'en')} field players push up together and fan out in an arc just outside the opponent's 6 m line; ` +
+      `${ownGK ? 'the goalkeeper stays back, ' : 'with no goalkeeper everyone joins the attack, '}using numbers and width to force the defense to collapse, ready to circulate the ball or shoot.`);
     return { explain, lines: [], actives: movers.slice(), tracks };
   }
 
@@ -1789,26 +2733,100 @@
     const r = findPlayer(team, g.anum, g.agk);
     if (r.error) return { error: r.error };
     const p = r.p, dir = attackDir(team);
-    const tx = clamp(ball.x - dir * 0.85, view.x0 + 0.6, Math.min(FIELD_L - 0.6, view.x1 - 0.6));
+    const tx_ = clamp(ball.x - dir * 0.85, view.x0 + 0.6, Math.min(FIELD_L - 0.6, view.x1 - 0.6));
     const ty = clamp(ball.y, 0.6, FIELD_W - 0.6);
-    const d = Math.hypot(tx - p.x, ty - p.y);
+    const d = Math.hypot(tx_ - p.x, ty - p.y);
     return {
-      explain: `【解析】${nameOf(p)}游向水球（约${d.toFixed(1)}米）并控制住球，取得球权，准备发起下一次进攻。`,
+      explain: B(`【解析】${nameOf(p, 'zh')}游向水球（约${d.toFixed(1)}米）并控制住球，取得球权，准备发起下一次进攻。`,
+                 `[Analysis] ${nameOf(p, 'en')} swims to the ball (about ${d.toFixed(1)} m), takes control and wins possession, ready to start the next attack.`),
       lines: [],
       actives: [p, ball],
-      tracks: [{ obj: p, wps: [{ x: p.x, y: p.y }, { x: tx, y: ty }], dur: clamp(d / SWIM_SPEED, 0.6, 2.4), ease: 'power2.inOut' }],
+      tracks: [{ obj: p, wps: [{ x: p.x, y: p.y }, { x: tx_, y: ty }], dur: clamp(d / SWIM_SPEED, 0.6, 2.4), ease: 'power2.inOut' }],
+    };
+  }
+
+
+  // =====================================================================
+  //        阵型名词 / 区域名词 → 坐标（与默认站位、一键预设阵型共用同一份数据）
+  // =====================================================================
+  // 区域字典：坐标同样以“球门在左的半场”定义（X = 离球门线米数，Y = 0–20），经 mToField() 映射到当前视角的球门端。
+  //   进攻方（白队）去这些区域 → 取字典坐标；防守方（蓝队）去这些区域 → 取“门前侧”0.5 米处（与蓝队防守阵型一致：左翼 4.5、左外围 5.5、中锋盯防 1.5），
+  //   这样既是“附近”，又不会和对位的进攻球员叠在同一点上。
+  const ZONES = {
+    center: { name: B('中锋位', 'the center-forward spot'), xy: [2, 10],
+      A: B('占据2米线前的中锋位，背身要位接球，吸引防守并创造造犯规和近距离射门的机会', 'taking the key spot on the 2 m line and receiving back-to-goal to draw defenders, win fouls and create close-range shots'),
+      B: B('退到门前的CK防守位，贴身看住对方中锋，切断内线传球', 'dropping to the CK defending spot in front of goal, marking the opposing center forward tightly and cutting off inside passes') },
+    wingL:  { name: B('左翼', 'the left wing'), xy: [5, 4],
+      A: B('站到5米线左侧的边锋位，拉开进攻宽度，既可切入也可斜传中锋', 'taking the left-wing spot on the 5 m line to stretch the attack — able to cut in or pass diagonally to the center forward'),
+      B: B('收到5米线左侧的防守位，封堵边锋切入和斜传中锋的线路', 'dropping to the defensive spot on the left of the 5 m line to block winger cut-ins and the diagonal pass to the center forward') },
+    wingR:  { name: B('右翼', 'the right wing'), xy: [5, 16],
+      A: B('站到5米线右侧的边锋位，拉开进攻宽度，既可切入也可斜传中锋', 'taking the right-wing spot on the 5 m line to stretch the attack — able to cut in or pass diagonally to the center forward'),
+      B: B('收到5米线右侧的防守位，封堵边锋切入和斜传中锋的线路', 'dropping to the defensive spot on the right of the 5 m line to block winger cut-ins and the diagonal pass to the center forward') },
+    perimL: { name: B('左外围', 'the left perimeter'), xy: [6, 7],
+      A: B('拉到6米线左侧的外围位，保持远射与传导威胁，牵制防线', 'stretching to the left perimeter spot on the 6 m line, keeping long-shot and ball-circulation threats to tie down the defense'),
+      B: B('顶到6米线左侧外围，干扰对方传导并逼迫其远射', 'stepping up to the left perimeter on the 6 m line to disrupt ball circulation and force a long shot') },
+    perimR: { name: B('右外围', 'the right perimeter'), xy: [6, 13],
+      A: B('拉到6米线右侧的外围位，保持远射与传导威胁，牵制防线', 'stretching to the right perimeter spot on the 6 m line, keeping long-shot and ball-circulation threats to tie down the defense'),
+      B: B('顶到6米线右侧外围，干扰对方传导并逼迫其远射', 'stepping up to the right perimeter on the 6 m line to disrupt ball circulation and force a long shot') },
+    top:    { name: B('顶部', 'the top spot'), xy: [6, 10],
+      A: B('站到6米线中路的顶部位，调度传导并威胁远射', 'taking the top spot in the middle of the 6 m line to direct circulation and threaten a long shot'),
+      B: B('顶住中路顶部，压制对方调度并封堵远射线路', 'holding the middle top spot to pressure the opposing distributor and block long-shot lanes') },
+    gk:     { name: B('门将区', 'the goalkeeper spot'), xy: [0.5, 10],
+      A: B('回到球门线中央的门将位，封堵门前射门角度', 'returning to the goalkeeper spot in the center of the goal line to close the shooting angle in front of goal'),
+      B: B('回到球门线中央的门将位，封堵门前射门角度', 'returning to the goalkeeper spot in the center of the goal line to close the shooting angle in front of goal') },
+  };
+  const ZONE_ALIAS = [
+    ['center', /^(?:中锋|CK|ck)(?:位置|位|区域|处|一带)$/],     // 单写“中锋”仍表示“对方中锋球员”，所以中锋必须带“位置/位/区域”
+    ['wingL',  /^(?:左翼|左边锋|左侧边锋)(?:位置|位|区域|处|附近|一带)?$/],
+    ['wingR',  /^(?:右翼|右边锋|右侧边锋)(?:位置|位|区域|处|附近|一带)?$/],
+    ['perimL', /^左外围(?:位置|位|区域|处|附近|一带)?$/],
+    ['perimR', /^右外围(?:位置|位|区域|处|附近|一带)?$/],
+    ['top',    /^(?:顶部|弧顶|顶端|中路顶部)(?:位置|位|区域|处|附近|一带)?$/],
+    ['gk',     /^(?:门将区|守门员区|门将位置|守门员位置|门将位)$/],
+  ];
+  const zoneKeyOf = spec => { const z = ZONE_ALIAS.find(([, re]) => re.test(spec)); return z ? z[0] : null; };
+
+  // 阵型切换指令：“白队变阵4-2”“蓝队收缩M-drop”“白队摆3-3阵型”“蓝队3-3人盯人”……
+  const RE_FORM = new RegExp(
+    `^${TEAM}(?:变阵|变换阵型|变换|转换阵型|转换|切换阵型|切换|改变阵型|调整阵型|调整|改打|改为|改成|换成|转为|变为|变成|摆出|摆成|布置|采用|落位|回到|执行|使用|收缩|压缩|变|成|为|到|打|摆)*` +
+    `(?<form>[34][-－—–比:：]?[23]|[Mm][-－—–_]?[Dd][Rr][Oo][Pp]|[Mm]型(?:收缩)?|人盯人|收缩防守|收缩|三三|四二)` +
+    `(?:阵型|阵|防守|站位|战术|进攻|收缩|人盯人)*$`);
+  function formKeyOf(team, text) {
+    const t = text.replace(/[－—–比:：_]/g, '-').toLowerCase();
+    if (team === 'A') {
+      if (/4-?2|四二/.test(t)) return '42';
+      if (/3-?3|三三/.test(t)) return '33';
+      return { error: B('白队进攻阵型目前支持：3-3、4-2。例如“白队变阵4-2”。', 'White attacking formations supported: 3-3 and 4-2. Example: "White 4-2 formation".') };
+    }
+    if (/m|drop|收缩/.test(t)) return 'mdrop';
+    if (/3-?3|人盯人|三三/.test(t)) return 'man';
+    return { error: B('蓝队防守阵型目前支持：3-3 人盯人、M-Drop 收缩。例如“蓝队收缩M-drop”。', 'Blue defensive formations supported: 3-3 man-to-man and M-Drop. Example: "Blue M-drop".') };
+  }
+  function planFormation(g) {
+    const team = teamOf(g.team);
+    const key = formKeyOf(team, g.form);
+    if (key.error) return key;
+    const f = formationTargets(team, key);
+    if (!f.tasks.length) return { error: B(`${tn(team, 'zh')}场上没有可以摆入该阵型的球员。`, `${tn(team, 'en')} has no players who can take this formation.`) };
+    markFormation(team, key);
+    return {
+      explain: f.text, lines: [], actives: f.tasks.map(t => t.obj),
+      tracks: f.tasks.map(t => ({ obj: t.obj, wps: [{ x: t.obj.x, y: t.obj.y }, { x: t.tx, y: t.ty }], dur: f.dur, ease: 'power2.inOut', noTrail: true })),
     };
   }
 
   function buildPlan(clause) {
     const plain = clause.replace(/[，。.!！?？、]/g, '');
     let m;
+    if ((m = RE_FORM.exec(plain))) return planFormation(m.groups);
     if ((m = RE_ALLIN.exec(plain))) return planAllIn(m.groups);
     if ((m = RE_TAKE.exec(plain))) return planTake(m.groups);
     if ((m = RE_SHOT.exec(plain))) return planShot(m.groups);
     if ((m = RE_PASS.exec(plain))) return planPass(m.groups);
     if ((m = RE_CLAUSE.exec(clause.replace(/[。.!！?？]+$/, '')))) return planMovePath(m.groups);
-    return { error: '无法识别该指令。支持的格式示例：\n· 白队3号移动到6米线左侧\n· 白队2号从侧翼游向中间绕过蓝队中锋，然后游向1号位置；同时白队1号向2号初始位置交叉补位\n· 白队水球传给4号\n· 蓝队射门' };
+    return { error: B(
+      '无法识别该指令。支持的格式示例：\n· 白队3号移动到6米线左侧\n· 白队2号从侧翼游向中间绕过蓝队中锋，然后游向1号位置；同时白队1号向2号初始位置交叉补位\n· 白队水球传给4号\n· 蓝队射门',
+      'Command not recognised. Examples:\n· White 3 move to the left side of the 6m line\n· White 2 swim from the wing to the middle around Blue\'s center forward, then swim to 1\'s position; at the same time White 1 cross-swap to 2\'s initial position\n· White ball pass to 4\n· Blue shoot\n· White 4-2 formation') };
   }
 
   function planMovePath(g) {
@@ -1819,24 +2837,26 @@
 
     const segs = g.rest.split(/，|然后|接着|随后|之后/)
       .map(x => x.replace(/^(并且|并|就|再)/, '')).filter(Boolean);
-    if (!segs.length) return { error: '没有读到要去的位置。示例：白队3号移动到6米线左侧。' };
+    if (!segs.length) return { error: B('没有读到要去的位置。示例：白队3号移动到6米线左侧。', 'No destination found. Example: "White 3 move to the left side of the 6m line".') };
 
     let base = { x: mover.x, y: mover.y };
     const wps = [{ x: base.x, y: base.y }];
     const avoid = [], texts = [];
-    let anyBy = false, anyCross = false, simple = null;
+    let anyBy = false, anyCross = false, simple = null, zoneOnly = null;
 
     for (let i = 0; i < segs.length; i++) {
       const m = SEG_RE.exec(segs[i]);
-      if (!m) return { error: `无法理解路径片段“${segs[i]}”。示例：从侧翼游向中间绕过蓝队中锋 / 游向1号位置 / 移动到6米线左侧。` };
+      if (!m) return { error: B(
+        `无法理解路径片段“${segs[i]}”。示例：从侧翼游向中间绕过蓝队中锋 / 游向1号位置 / 移动到6米线左侧。`,
+        `Cannot understand the path segment "${segs[i]}". Examples: swim from the wing to the middle around Blue's center forward / swim to 1's position / move to the left side of the 6m line.`) };
       const { from, to, by, cross } = m.groups;
 
       // “从X”：只有当 X 离当前位置较远时，才先游到 X；否则当作起点说明
-      let fromText = '';
+      let fromLabel = null;
       if (from && i === 0) {
         const fs = resolveSpot(from, mover, base);
         if (fs.error) return { error: fs.error };
-        fromText = `从${fs.label}出发，`;
+        fromLabel = fs.label;
         if (d2(base, fs) > 2.5) { wps.push({ x: fs.x, y: fs.y }); base = { x: fs.x, y: fs.y }; }
       }
 
@@ -1851,10 +2871,10 @@
       let end = { x: target.x, y: target.y };
       // “游向中间绕过X”：绕到 X 的另一侧再停下，终点落在 X 身后
       if (obstacle && target.isMiddle) {
-        const dx = obstacle.x - base.x, dy = obstacle.y - base.y, L = Math.hypot(dx, dy) || 1;
+        const dx = obstacle.x - base.x, dy = obstacle.y - base.y, Ld = Math.hypot(dx, dy) || 1;
         end = {
-          x: clamp(obstacle.x + dx / L * (obstacle.r + 1.0), 0.5, Math.min(FIELD_L - 0.5, view.x1 - 0.5)),
-          y: clamp(obstacle.y + dy / L * (obstacle.r + 1.0), 0.5, FIELD_W - 0.5),
+          x: clamp(obstacle.x + dx / Ld * (obstacle.r + 1.0), 0.5, Math.min(FIELD_L - 0.5, view.x1 - 0.5)),
+          y: clamp(obstacle.y + dy / Ld * (obstacle.r + 1.0), 0.5, FIELD_W - 0.5),
         };
       }
 
@@ -1869,22 +2889,30 @@
       wps.push(end);
       base = end;
 
-      texts.push(`${fromText}游向${target.label}` +
-        (obstacle ? `，沿弧线绕过${obstacle.label}` : '') +
-        (cross ? '，与队友交叉换位' : ''));
+      texts.push(B(
+        `${fromLabel ? '从' + fromLabel.zh + '出发，' : ''}游向${target.label.zh}` +
+          (obstacle ? `，沿弧线绕过${obstacle.label.zh}` : '') + (cross ? '，与队友交叉换位' : ''),
+        `swims ${fromLabel ? 'from ' + fromLabel.en + ' ' : ''}to ${target.label.en}` +
+          (obstacle ? `, curving around ${obstacle.label.en}` : '') + (cross ? ', swapping places with a teammate' : '')));
       if (segs.length === 1 && !by && !cross && target.res && !from) simple = target.res;
+      if (segs.length === 1 && !by && !cross && target.zone && !from) zoneOnly = target;
     }
 
-    const cond = condPhrase(team);
+    const cond = B(condPhrase(team, 'zh'), condPhrase(team, 'en'));
     let explain;
-    if (simple) {
-      explain = `【解析】${nameOf(mover)}${cond}，移动至${simple.text}，${movePurpose(simple, mover)}。`;
+    if (zoneOnly) {
+      explain = B(`【解析】${nameOf(mover, 'zh')}${cond.zh}，移动至${zoneOnly.label.zh}：${zoneOnly.zone[zoneOnly.zoneRole].zh}。`,
+                  `[Analysis] ${cap1(cond.en)}, ${nameOf(mover, 'en')} moves to ${zoneOnly.label.en}, ${zoneOnly.zone[zoneOnly.zoneRole].en}.`);
+    } else if (simple) {
+      explain = B(`【解析】${nameOf(mover, 'zh')}${cond.zh}，移动至${simple.text.zh}，${movePurpose(simple, mover, 'zh')}。`,
+                  `[Analysis] ${cap1(cond.en)}, ${nameOf(mover, 'en')} moves to ${simple.text.en}, ${movePurpose(simple, mover, 'en')}.`);
     } else {
-      let tail = '用弧线跑位拉扯对方防线';
-      if (anyBy && anyCross) tail = '用弧线绕开对手并与队友交叉换位，拉扯防线的同时保持阵型紧凑';
-      else if (anyBy) tail = '用弧线绕开对手，避免直线穿插被封堵，同时拉扯对方防线';
-      else if (anyCross) tail = '与队友交叉换位，保持阵型紧凑';
-      explain = `【解析】${nameOf(mover)}${cond}，${texts.join('，随后')}，${tail}。`;
+      let tail = B('用弧线跑位拉扯对方防线', 'using curved runs to stretch the defense');
+      if (anyBy && anyCross) tail = B('用弧线绕开对手并与队友交叉换位，拉扯防线的同时保持阵型紧凑', 'using a curved run around the defender and a cross-swap with a teammate to stretch the line while keeping the shape compact');
+      else if (anyBy) tail = B('用弧线绕开对手，避免直线穿插被封堵，同时拉扯对方防线', 'using a curved run around the defender to avoid a blocked straight line while stretching the defense');
+      else if (anyCross) tail = B('与队友交叉换位，保持阵型紧凑', 'swapping places with a teammate to keep the shape compact');
+      explain = B(`【解析】${nameOf(mover, 'zh')}${cond.zh}，${texts.map(t => t.zh).join('，随后')}，${tail.zh}。`,
+                  `[Analysis] ${cap1(cond.en)}, ${nameOf(mover, 'en')} ${texts.map(t => t.en).join(', then ')}, ${tail.en}.`);
     }
 
     const total = buildPath(wps, avoid).total;
@@ -1896,10 +2924,10 @@
 
   function planPass(g) {
     let team = g.team ? teamOf(g.team) : null;
-    if (!team && (g.pnum || g.pgk)) return { error: '请指明传球一方的队伍，例如“白队3号传给4号”。' };
+    if (!team && (g.pnum || g.pgk)) return { error: B('请指明传球一方的队伍，例如“白队3号传给4号”。', 'Please say which team is passing, e.g. "White 3 pass to 4".') };
     if (!team) {
       const holder = nearestOf(null, 1.5);
-      if (!holder) return { error: '无法判断由哪一队传球，请写明队伍，例如“白队水球传给4号”。' };
+      if (!holder) return { error: B('无法判断由哪一队传球，请写明队伍，例如“白队水球传给4号”。', 'Cannot tell which team is passing — name the team, e.g. "White ball pass to 4".') };
       team = holder.team;
     }
     let passer = null;
@@ -1915,7 +2943,7 @@
     const rr = findPlayer(rteam, g.rnum, g.rgk);
     if (rr.error) return { error: rr.error };
     const receiver = rr.p;
-    if (receiver === passer) return { error: '不能把球传给自己。' };
+    if (receiver === passer) return { error: B('不能把球传给自己。', 'A player cannot pass the ball to themselves.') };
 
     const from = passer || { kind: 'anchor', x: ball.x, y: ball.y };
     const d = Math.hypot(receiver.x - ball.x, receiver.y - ball.y);
@@ -1923,15 +2951,17 @@
     const by = clamp(receiver.y, 0.3, FIELD_W - 0.3);
 
     let style;
-    if (d < 4) style = '短距离快速出球，压缩对方的反应时间';
-    else if (d < 9) style = '中距离传导，转移球的落点并寻找防守空档';
-    else style = '长传转移，横向调动对方防线并制造宽度';
-    let extra = '';
-    if (rteam !== team) extra = '（注意：传向对方球员，等同于传球失误）';
-    else if (receiver.isGK) extra = '（回传守门员，重新组织进攻）';
+    if (d < 4) style = B('短距离快速出球，压缩对方的反应时间', 'a short, quick release that cuts the opponent\'s reaction time');
+    else if (d < 9) style = B('中距离传导，转移球的落点并寻找防守空档', 'a mid-range pass that shifts the ball and looks for gaps in the defense');
+    else style = B('长传转移，横向调动对方防线并制造宽度', 'a long switch that stretches the defense sideways and creates width');
+    let extra = B('', '');
+    if (rteam !== team) extra = B('（注意：传向对方球员，等同于传球失误）', ' (note: passing to an opponent is effectively a turnover)');
+    else if (receiver.isGK) extra = B('（回传守门员，重新组织进攻）', ' (back-pass to the goalkeeper to reorganize the attack)');
 
-    const who = passer ? nameOf(passer) : TEAMS[team].name;
-    const explain = `【解析】${who}${condPhrase(team)}，将球传给${nameOf(receiver)}，传球距离约${d.toFixed(1)}米，${style}${extra}。`;
+    const whoZ = passer ? nameOf(passer, 'zh') : tn(team, 'zh'), whoE = passer ? nameOf(passer, 'en') : tn(team, 'en');
+    const explain = B(
+      `【解析】${whoZ}${condPhrase(team, 'zh')}，将球传给${nameOf(receiver, 'zh')}，传球距离约${d.toFixed(1)}米，${style.zh}${extra.zh}。`,
+      `[Analysis] ${cap1(condPhrase(team, 'en'))}, ${whoE} passes the ball to ${nameOf(receiver, 'en')}, about ${d.toFixed(1)} m — ${style.en}${extra.en}.`);
     return {
       explain,
       lines: [['pass', from, receiver]],
@@ -1942,10 +2972,10 @@
 
   function planShot(g) {
     let team = g.team ? teamOf(g.team) : null;
-    if (!team && (g.snum || g.sgk)) return { error: '请指明射门一方的队伍，例如“蓝队5号射门”。' };
+    if (!team && (g.snum || g.sgk)) return { error: B('请指明射门一方的队伍，例如“蓝队5号射门”。', 'Please say which team is shooting, e.g. "Blue 5 shoot".') };
     if (!team) {
       const holder = nearestOf(null, 1.5);
-      if (!holder) return { error: '无法判断由哪一队射门，请写明队伍，例如“蓝队射门”。' };
+      if (!holder) return { error: B('无法判断由哪一队射门，请写明队伍，例如“蓝队射门”。', 'Cannot tell which team is shooting — name the team, e.g. "Blue shoot".') };
       team = holder.team;
     }
     let shooter = null;
@@ -1959,13 +2989,15 @@
 
     const side = attackSide(team);                         // 攻向对方球门
     const gx = goalXOf(side);
-    if (gx > view.x1 - 0.2) return { error: `${TEAMS[team].name}进攻的球门在当前半场视角之外，请先切换到全场视角。` };
+    if (gx > view.x1 - 0.2) return { error: B(`${tn(team, 'zh')}进攻的球门在当前半场视角之外，请先切换到全场视角。`, `${tn(team, 'en')} attacks a goal outside the current half-pitch view — switch to full-pitch view first.`) };
     const ty = ball.y < FIELD_W / 2 ? FIELD_W / 2 + 0.9 : FIELD_W / 2 - 0.9;   // 打向远角
     const endX = gx + (side === 'R' ? 0.2 : -0.2);
     const d = Math.abs(gx - ball.x);
     const inside = d < 6;
-    const who = shooter ? nameOf(shooter) : TEAMS[team].name;
-    const explain = `【解析】${who}${condPhrase(team)}，在距对方球门线约${d.toFixed(1)}米处起射（${inside ? '6米线内，可直接出手' : '6米线外，出手距离较远'}），瞄准球门远角，考验守门员的横向移动。`;
+    const whoZ = shooter ? nameOf(shooter, 'zh') : tn(team, 'zh'), whoE = shooter ? nameOf(shooter, 'en') : tn(team, 'en');
+    const explain = B(
+      `【解析】${whoZ}${condPhrase(team, 'zh')}，在距对方球门线约${d.toFixed(1)}米处起射（${inside ? '6米线内，可直接出手' : '6米线外，出手距离较远'}），瞄准球门远角，考验守门员的横向移动。`,
+      `[Analysis] ${cap1(condPhrase(team, 'en'))}, ${whoE} shoots from about ${d.toFixed(1)} m from the opponent's goal line (${inside ? 'inside the 6 m line, a direct shot is allowed' : 'outside the 6 m line, a longer shooting distance'}), aiming at the far corner to test the goalkeeper's lateral movement.`);
     const startPt = { kind: 'anchor', x: ball.x, y: ball.y };
     const endPt = { kind: 'anchor', x: gx, y: ty };
     const dd = Math.hypot(endX - ball.x, ty - ball.y);
@@ -1980,49 +3012,65 @@
   // =====================================================================
   //                         讲解面板 + 指令执行
   // =====================================================================
+  const entries = [];                 // 讲解面板里的每条记录都保存双语文本，切换语言时整体改写
   function addEntry(cmdText, text, kind) {
     const box = document.createElement('div');
     box.className = 'entry' + (kind ? ' ' + kind : '');
     const cmd = document.createElement('div');
     cmd.className = 'cmd';
-    cmd.textContent = '▶ ' + cmdText;
     const body = document.createElement('div');
     body.className = 'text';
     body.style.whiteSpace = 'pre-line';
     box.append(cmd, body);
     els.log.appendChild(box);
+    const e = { cmdText, text, cmd, body, box, tween: null };
+    entries.push(e);
+    if (entries.length > 200) { const old = entries.shift(); if (old.tween) old.tween.kill(); old.box.remove(); }
+    cmd.textContent = '▶ ' + tx(cmdText);
+    const full = tx(text);
     els.log.scrollTop = els.log.scrollHeight;
 
     if (window.gsap) {
       gsap.from(box, { opacity: 0, y: 10, duration: 0.3 });
       // 打字机效果：讲解文字随动画同步逐字出现
       const proxy = { n: 0 };
-      gsap.to(proxy, {
-        n: text.length, ease: 'none',
-        duration: clamp(text.length * 0.035, 0.6, 3.2),
+      e.tween = gsap.to(proxy, {
+        n: full.length, ease: 'none',
+        duration: clamp(full.length * 0.035, 0.6, 3.2),
         onUpdate: () => {
-          body.textContent = text.slice(0, Math.round(proxy.n));
+          body.textContent = full.slice(0, Math.round(proxy.n));
           els.log.scrollTop = els.log.scrollHeight;
         },
+        onComplete: () => { e.tween = null; },
       });
     } else {
-      body.textContent = text;
+      body.textContent = full;
     }
+  }
+  // 切换语言：把已有的讲解记录按新语言重写（取消正在进行的打字机动画，直接显示全文）
+  function relocalizeLog() {
+    entries.forEach(e => {
+      if (e.tween) { e.tween.kill(); e.tween = null; }
+      e.cmd.textContent = '▶ ' + tx(e.cmdText);
+      e.body.textContent = tx(e.text);
+    });
   }
 
   // 执行一个指令组：组内所有指令同时开始（“同时”），全部结束后才进入下一组
+  const clauseLabel = new Map();      // 规范化后的中文指令 → 用户输入的英文原文（讲解面板里显示原文）
   async function executeGroup(clauses, token) {
     const plans = [];
-    for (const c of clauses) {
-      const plan = buildPlan(c);
-      if (plan.error) { addEntry(c, plan.error, 'err'); return; }
+    const shown = clauses.map(c => clauseLabel.get(c) || c);
+    for (let i = 0; i < clauses.length; i++) {
+      const plan = buildPlan(clauses[i]);
+      if (plan.error) { addEntry(shown[i], plan.error, 'err'); return; }
       plans.push(plan);
     }
     plans.forEach(pl => pl.lines.forEach(([type, a, b]) => addLine(type, a, b)));
     activeEnts = plans.flatMap(p => p.actives);
-    addEntry(clauses.join('；'), plans.map(p => p.explain).join('\n'));
+    addEntry(shown.join('；'), B(plans.map(p => p.explain.zh).join('\n'), plans.map(p => p.explain.en).join('\n')));
     requestRender();
-    await Promise.all(plans.flatMap(p => p.tracks.map(t => animatePath(t.obj, t.wps, t.dur, t.ease, { avoid: t.avoid }))));
+    await Promise.all(plans.flatMap(p => p.tracks.map(t => animatePath(t.obj, t.wps, t.dur, t.ease, { avoid: t.avoid, noTrail: t.noTrail }))));
     if (token !== runToken) return;
     activeEnts = [];
     requestRender();
@@ -2045,7 +3093,7 @@
   function submitCommand() {
     const raw = els.cmdInput.value.trim();
     if (!raw) return;
-    const groups = parseInput(raw);
+    const groups = isEnglishInput(raw) ? parseEnglish(raw) : parseInput(raw);   // 纯英文输入先译成规范中文指令，再走同一套解析器
     if (!groups.length) return;
     setSelected(null);
     queue.push(...groups);
@@ -2070,9 +3118,10 @@
   const SCENARIOS = {
     // 预设：A 队 6 名场上球员 + 有门将；B 队 5 名场上球员 + 有门将
     perimeter: {
-      title: '6打5 外围远射',
+      title: B('6打5 外围远射', '6 on 5 Perimeter Shot'),
       setup: { nA: 6, gkA: true, nB: 5, gkB: true },
-      setupText: '已设置：白队6名场上球员+门将，对蓝队5名场上球员+门将。白队多一人，目标是用外围传导拉开防守，再从6米线外起射。',
+      setupText: B('已设置：白队6名场上球员+门将，对蓝队5名场上球员+门将。白队多一人，目标是用外围传导拉开防守，再从6米线外起射。',
+        "Set: White 6 field players + goalkeeper vs Blue 5 field players + goalkeeper. White has an extra player; the plan is to stretch the defense with perimeter passing and then shoot from outside the 6 m line."),
       steps: [
         {
           moves: {
@@ -2080,39 +3129,46 @@
             B1: [19.8, 4.5], B2: [19.8, 10], B3: [19.8, 15.5], B4: [22, 7.2], B5: [22, 12.8],
           },
           ball: 'A2', dur: 2.0, pause: 0.3,
-          say: () => `【解析】白队${condPhrase('A')}，6人散开成弧形外围阵型：2号居中控球，1、3号压在外围，4、6号拉开两翼，5号潜入门前牵制蓝队后防。蓝队收缩到6米线附近防守。`,
+          say: () => B(`【解析】白队${condPhrase('A', 'zh')}，6人散开成弧形外围阵型：2号居中控球，1、3号压在外围，4、6号拉开两翼，5号潜入门前牵制蓝队后防。蓝队收缩到6米线附近防守。`,
+            `[Analysis] White, ${condPhrase('A', 'en')}, spreads its six players into a perimeter arc: #2 in the middle with the ball, #1 and #3 pressed out on the perimeter, #4 and #6 stretching both wings, and #5 slipping in front of goal to pin the Blue back line. Blue collapses to around the 6 m line.`),
         },
         {
           lines: [['pass', 'A2', 'A4']], ball: 'A4', ballEase: 'power1.inOut', dur: 0.9,
-          say: '【解析】2号先把球分给上侧（左翼）的4号，试探蓝队外线防守的重心。',
+          say: B('【解析】2号先把球分给上侧（左翼）的4号，试探蓝队外线防守的重心。',
+          "[Analysis] #2 first passes to #4 on the upper side (left wing) to test where Blue's outside defense is leaning."),
         },
         {
           lines: [['pass', 'A4', 'A6']], ball: 'A6', ballEase: 'power1.inOut', dur: 1.3,
           moves: { B1: [19.8, 7.5, 1.2], B2: [19.6, 12.8, 1.2], B3: [19.2, 16.2, 1.2], B4: [22, 8.0, 1.2], B5: [22, 14.5, 1.2] },
-          say: '【解析】4号长传横向转移到下侧（右翼）6号，蓝队防线被迫整体向球的一侧收缩，另一侧外围随之打开。',
+          say: B('【解析】4号长传横向转移到下侧（右翼）6号，蓝队防线被迫整体向球的一侧收缩，另一侧外围随之打开。',
+          "[Analysis] #4 switches the play with a long pass to #6 on the lower side (right wing); the Blue line is forced to shift toward the ball and the far-side perimeter opens up."),
         },
         {
           lines: [['pass', 'A6', 'A3']], ball: 'A3', ballEase: 'power1.inOut', dur: 0.8,
-          say: '【解析】6号迅速短传给站在外围的3号，蓝队补位不及，3号在6米线外获得了出手空间。',
+          say: B('【解析】6号迅速短传给站在外围的3号，蓝队补位不及，3号在6米线外获得了出手空间。',
+          "[Analysis] #6 quickly passes short to #3 on the perimeter; Blue cannot recover in time, and #3 gets room to shoot outside the 6 m line."),
         },
         {
           lines: [['shot', 'ball', [25, 9.1]]], ball: [25.2, 9.1], ballEase: 'power2.in', ballDur: 0.7, dur: 0.7,
           moves: { BG: [24.3, 9.4, 0.6] },
-          say: '【解析】白队3号在距球门线约6.7米（6米线外）起射，瞄准远角，迫使蓝队守门员横向移动；5号在门前牵制，随时准备补射。',
+          say: B('【解析】白队3号在距球门线约6.7米（6米线外）起射，瞄准远角，迫使蓝队守门员横向移动；5号在门前牵制，随时准备补射。',
+          "[Analysis] White #3 shoots from about 6.7 m from the goal line (outside the 6 m line), aiming at the far corner to force the Blue goalkeeper to move laterally; #5 pins in front of goal, ready for the rebound."),
         },
       ],
     },
 
     // 白队 4 名场上球员 + 门将 对 蓝队 3 名场上球员 + 门将
     fastbreak: {
-      title: '4打3 快速反击',
+      title: B('4打3 快速反击', '4 on 3 Fast Break'),
       setup: { nA: 4, gkA: true, nB: 3, gkB: true },
-      setupText: '已设置：白队4名场上球员+门将，对蓝队3名场上球员+门将。蓝队进攻失败后全员留在白队半场，白队抓住转换机会反击。',
+      setupText: B('已设置：白队4名场上球员+门将，对蓝队3名场上球员+门将。蓝队进攻失败后全员留在白队半场，白队抓住转换机会反击。',
+        "Set: White 4 field players + goalkeeper vs Blue 3 field players + goalkeeper. After Blue's attack fails, all Blue players are stuck in White's half and White counters on the transition."),
       steps: [
         {
           moves: { B1: [9, 8.2, 1.6], B2: [9, 11.8, 1.6], B3: [10.8, 10, 1.6] },
           ball: 'AG', ballDur: 1.2, dur: 1.6, ballEase: 'power1.inOut',
-          say: '【解析】蓝队进攻被化解，白队守门员拿到球；蓝队3名场上球员都还留在白队半场，来不及回防——快攻的机会出现了。',
+          say: B('【解析】蓝队进攻被化解，白队守门员拿到球；蓝队3名场上球员都还留在白队半场，来不及回防——快攻的机会出现了。',
+          "[Analysis] Blue's attack is snuffed out and the White goalkeeper gets the ball; all 3 Blue field players are still in White's half and cannot recover in time — a fast-break chance appears."),
         },
         {
           lines: [['pass', 'AG', 'A1']], ball: 'A1', ballDur: 1.8, ballEase: 'power1.inOut',
@@ -2121,7 +3177,8 @@
             B1: [18, 8, 2.4], B2: [18.5, 12.5, 2.4], B3: [20, 10, 2.4],
           },
           dur: 2.4,
-          say: '【解析】守门员一脚长传发动反击：1、2号全速前插并拉开宽度，3、4号作为后点跟进；蓝队3名球员只能拼命回游。',
+          say: B('【解析】守门员一脚长传发动反击：1、2号全速前插并拉开宽度，3、4号作为后点跟进；蓝队3名球员只能拼命回游。',
+          "[Analysis] The goalkeeper launches the counter with a long pass: #1 and #2 sprint forward and stretch the width, #3 and #4 follow up as trailers; the 3 Blue players can only swim back desperately."),
         },
         {
           ball: 'A1', dur: 1.2,
@@ -2129,30 +3186,35 @@
             A1: [18, 5], A2: [17.5, 15], A3: [15, 8.5], A4: [15, 11.5],
             B1: [18.2, 7.5], B2: [18.5, 12.8], B3: [20, 9.5],
           },
-          say: () => `【解析】1号持球沿一侧推进，吸引蓝队防守向外侧收缩。白队${condPhrase('A')}，在前场形成多打少。`,
+          say: () => B(`【解析】1号持球沿一侧推进，吸引蓝队防守向外侧收缩。白队${condPhrase('A', 'zh')}，在前场形成多打少。`,
+            `[Analysis] #1 carries the ball up one side, drawing the Blue defense outward. ${cap1(condPhrase('A', 'en'))}, White creates an extra-man situation in the front court.`),
         },
         {
           lines: [['pass', 'A1', 'A2']], ball: 'A2', ballEase: 'power1.inOut', dur: 0.9,
           moves: { B2: [19, 13.8, 0.9] },
-          say: '【解析】1号在防守人扑上来之前分球给另一侧的2号，蓝队防守来不及横向补位。',
+          say: B('【解析】1号在防守人扑上来之前分球给另一侧的2号，蓝队防守来不及横向补位。',
+          "[Analysis] Before the defender closes in, #1 moves the ball to #2 on the other side; the Blue defense cannot shift across in time."),
         },
         {
           ball: 'A2', dur: 1.0, moves: { A2: [20.5, 13.5] },
-          say: '【解析】2号带球切入6米线内，把射门距离缩短到最有威胁的位置，同时逼近蓝队守门员的射门角度。',
+          say: B('【解析】2号带球切入6米线内，把射门距离缩短到最有威胁的位置，同时逼近蓝队守门员的射门角度。',
+          "[Analysis] #2 drives the ball inside the 6 m line, cutting the shot distance to the most dangerous spot and closing in on the Blue goalkeeper's shooting angle."),
         },
         {
           lines: [['shot', 'ball', [25, 9.1]]], ball: [25.2, 9.1], ballEase: 'power2.in', ballDur: 0.6, dur: 0.6,
           moves: { BG: [24.3, 9.5, 0.6] },
-          say: '【解析】白队2号在距球门线约3.7米处射门（6米线内可直接出手），球打向远角；蓝队后防被甩开，只剩守门员一人面对进攻。',
+          say: B('【解析】白队2号在距球门线约3.7米处射门（6米线内可直接出手），球打向远角；蓝队后防被甩开，只剩守门员一人面对进攻。',
+          "[Analysis] White #2 shoots from about 3.7 m from the goal line (inside the 6 m line, a direct shot is allowed) at the far corner; the Blue back line has been beaten and only the goalkeeper faces the attack."),
         },
       ],
     },
 
     // 预设：A 队 7 名场上球员 + 无门将；B 队 6 名场上球员 + 有门将
     allout: {
-      title: '撤门将全线压上',
+      title: B('撤门将全线压上', 'All-Out Attack (Pulled Goalkeeper)'),
       setup: { nA: 7, gkA: false, nB: 6, gkB: true },
-      setupText: '已设置：白队7名场上球员（无门将），对蓝队6名场上球员+门将。这是比赛最后时刻落后一方常用的冒险打法，白队球员号码为1到7号。',
+      setupText: B('已设置：白队7名场上球员（无门将），对蓝队6名场上球员+门将。这是比赛最后时刻落后一方常用的冒险打法，白队球员号码为1到7号。',
+        "Set: White 7 field players (no goalkeeper) vs Blue 6 field players + goalkeeper. This is the risky tactic a trailing team uses in the final moments; White's players are numbered 1 to 7."),
       steps: [
         {
           moves: {
@@ -2161,28 +3223,32 @@
             B1: [18.5, 4.5], B2: [18, 10], B3: [18.5, 15.5], B4: [21.5, 5.5], B5: [21.5, 10], B6: [21.5, 14.5],
           },
           ball: 'A2', dur: 2.2, pause: 0.3,
-          say: '【解析】白队撤下守门员，7名场上球员全部压上：1到4号在外围展开，5、7号贴边线拉宽，6号插入防线缝隙做内线策应。蓝队收缩成两排区域防守。代价是白队球门此时完全无人把守。',
+          say: B('【解析】白队撤下守门员，7名场上球员全部压上：1到4号在外围展开，5、7号贴边线拉宽，6号插入防线缝隙做内线策应。蓝队收缩成两排区域防守。代价是白队球门此时完全无人把守。',
+          "[Analysis] White pulls its goalkeeper and sends all 7 field players forward: #1–#4 spread on the perimeter, #5 and #7 hug the side lines for width, and #6 slips into the gap in the defense as an inside link. Blue collapses into a two-line zone. The price: White's goal is now completely unguarded."),
         },
         {
           lines: [['pass', 'A2', 'A3']], ball: 'A3', ballEase: 'power1.inOut', dur: 1.0,
           moves: { B2: [18, 12.5, 1.0], B5: [21.5, 12, 1.0] },
-          say: '【解析】2号先把球短传给3号，通过快速的外线转移把蓝队防线拉向下侧，上侧的防守出现间隙。',
+          say: B('【解析】2号先把球短传给3号，通过快速的外线转移把蓝队防线拉向下侧，上侧的防守出现间隙。',
+          "[Analysis] #2 first passes short to #3; a quick outside switch pulls the Blue line toward the lower side and opens a gap on the upper side."),
         },
         {
           lines: [['pass', 'A3', 'A6']], ball: 'A6', ballEase: 'power1.inOut', dur: 1.0,
-          say: '【解析】3号抓住间隙，把球直接送给站在防线缝隙里的6号，用一脚内线传球打穿蓝队的区域防守。',
+          say: B('【解析】3号抓住间隙，把球直接送给站在防线缝隙里的6号，用一脚内线传球打穿蓝队的区域防守。',
+          "[Analysis] #3 spots the gap and feeds #6, who is standing in the seam of the defense — one inside pass breaks through Blue's zone."),
         },
         {
           lines: [['shot', 'ball', [25, 10.9]]], ball: [25.2, 10.9], ballEase: 'power2.in', ballDur: 0.7, dur: 0.7,
           moves: { BG: [24.3, 9.2, 0.6] },
-          say: '【解析】6号在距球门线约4米处接球即射，瞄准远角。这类最后时刻的强攻，需要在“丢球后空门被反击”的风险和多一人进攻的收益之间做取舍。',
+          say: B('【解析】6号在距球门线约4米处接球即射，瞄准远角。这类最后时刻的强攻，需要在“丢球后空门被反击”的风险和多一人进攻的收益之间做取舍。',
+          "[Analysis] #6 catches and shoots at once from about 4 m from the goal line, aiming at the far corner. Such last-minute all-out attacks trade off the risk of an empty net on the counter against the gain of an extra attacker."),
         },
       ],
     },
 
     // 交叉换位演示：自定义场景（只有两名白队球员），弧线绕过中心点并留下轨迹
     cross: {
-      title: '交叉换位',
+      title: B('交叉换位', 'Cross-Swap'),
       scene() {
         stopAnimations();
         players = [
@@ -2192,11 +3258,13 @@
         ball.hidden = true;
         lines = [];
         trails = [];
-        markers = [{ x: FIELD_L / 2, y: FIELD_W / 2, label: '中心点' }];
+        drawnPaths = []; histClear();
+        markers = [{ x: FIELD_L / 2, y: FIELD_W / 2, label: B('中心点', 'Center Point') }];
         setSelected(null);
         requestRender();
       },
-      setupText: '演示场景：已自动在场上生成两名白队球员（2号在左侧6米线，1号在右侧5米线），并在场地中心标出“中心点”。演示结束后，点击“恢复默认 6+1”可还原；“清除轨迹”可擦掉虚线。',
+      setupText: B('演示场景：已自动在场上生成两名白队球员（2号在左侧6米线，1号在右侧5米线），并在场地中心标出“中心点”。演示结束后，点击“恢复默认 6+1”可还原；“清除轨迹”可擦掉虚线。',
+        "Demo scene: two White players have been placed on the pitch (#2 on the left 6 m line, #1 on the right 5 m line) and a \"Center Point\" is marked at the center of the pool. When the demo ends, click \"Restore Default 6+1\" to reset; \"Clear Trails\" erases the dashed lines."),
       steps: [
         {
           // 2号：从左侧 6 米线出发，弧线绕过中心点（从其上方经过），到达右侧 5 米线
@@ -2206,7 +3274,8 @@
             A1: { pts: [[12.2, 11.7], [6.5, 6]], dur: 4.2 },
           },
           pause: 0.6,
-          say: '【解析】2号侧翼插上拉扯防线，1号交叉补位保持阵型紧凑。',
+          say: B('【解析】2号侧翼插上拉扯防线，1号交叉补位保持阵型紧凑。',
+          "[Analysis] #2 pushes up the wing to stretch the defense while #1 cross-swaps in behind to keep the shape compact."),
         },
       ],
     },
@@ -2265,13 +3334,13 @@
 
     activeEnts = actives;
     const text = typeof step.say === 'function' ? step.say() : step.say;
-    if (text) addEntry(`${sc.title} · ${idx + 1}/${sc.steps.length}`, text);
+    if (text) addEntry(bi(l => `${sc.title[l]} · ${idx + 1}/${sc.steps.length}`), text);
     requestRender();
 
     await Promise.all(tweens);
     if (token !== runToken) return;
     // 至少等到讲解文字打完，再进入下一步
-    const minMs = text ? clamp(text.length * 0.035, 0.6, 3.2) * 1000 : 0;
+    const minMs = text ? clamp(tx(text).length * 0.035, 0.6, 3.2) * 1000 : 0;
     await delay(Math.max(0, minMs - (performance.now() - t0)) + (step.pause ?? 0.4) * 1000);
   }
 
@@ -2327,15 +3396,32 @@
   els.clearTrails.addEventListener('click', () => { trails = []; requestRender(); });
 
   els.lineMode.addEventListener('change', () => {
-    lineMode = els.lineMode.checked;
-    setSelected(null);
+    setOpMode(els.lineMode.checked ? 'connect' : 'select');   // 面板开关 ↔ 工具栏 ↔ 单选 三处同步
   });
-  els.clearLines.addEventListener('click', () => { lines = []; setSelected(null); });
+  document.querySelectorAll('input[name="opMode"]').forEach(r =>
+    r.addEventListener('change', () => { if (r.checked) { setOpMode(r.value); closeIfMobile(); } }));
+  document.getElementById('clearPaths').addEventListener('click', clearPathsOnly);
+  document.querySelectorAll('#toolbar [data-tool]').forEach(b => b.addEventListener('click', () => setOpMode(b.dataset.tool)));
+  document.getElementById('tbUndo').addEventListener('click', undo);
+  document.getElementById('tbClear').addEventListener('click', clearBoard);
+  document.getElementById('playBtn').addEventListener('click', () => { playTactic(); closeIfMobile(); });
+  floatPlay.addEventListener('click', playTactic);
+  window.addEventListener('keydown', e => {                    // 快捷键：V = 选择与拖拽，D = 战术画线，Esc = 放弃当前画线
+    if (e.key === 'Escape') { drawing = null; closePathMenu(); requestRender(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !e.target.matches('input, textarea')) { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.matches('input, select, textarea')) return;
+    if (e.key === 'c' || e.key === 'C') setOpMode('connect');
+    else if (e.key === 'e' || e.key === 'E') setOpMode('erase');
+    if (e.key === 'd' || e.key === 'D') setOpMode('draw');
+    else if (e.key === 'v' || e.key === 'V') setOpMode('select');
+  });
+  els.clearLines.addEventListener('click', clearLinesOnly);
+  setOpMode('select');                                         // 初始化工具栏高亮 / 光标
   els.resetBtn.addEventListener('click', () => {
     rebuild();
-    addEntry('重置站位', '已恢复当前视角下的初始站位，并清除所有连线、轨迹与待执行指令。', 'sys');
+    addEntry(B('重置站位', 'Reset Positions'), B('已恢复当前视角下的初始站位，并清除所有连线、轨迹与待执行指令。', 'Positions restored for the current view; all lines, trails and pending commands cleared.'), 'sys');
   });
-  els.clearLog.addEventListener('click', () => { els.log.innerHTML = ''; });
+  els.clearLog.addEventListener('click', () => { entries.forEach(e => e.tween && e.tween.kill()); entries.length = 0; els.log.innerHTML = ''; });
   els.runBtn.addEventListener('click', submitCommand);
   els.cmdInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submitCommand(); } });
   scnButtons.forEach(b => b.addEventListener('click', () => startScenario(b.dataset.scn)));
@@ -2344,12 +3430,12 @@
   window.addEventListener('keydown', e => { if (e.key === 'Escape') setSelected(null); });
 
   // ===== 默认状态 / 初始化 =====
-  // 默认：全场视角；双方各 6 名场上球员 + 1 名门将（红帽无数字）；场上号码 1–6；
+  // 默认：半场视角（球门在左）、白队 3-3 进攻 vs 蓝队 3-3 防守；双方各 6 名场上球员 + 1 名门将（红帽无数字）；场上号码 1–6；
   // “显示球员号码”“显示跑动轨迹”勾选。先把控件值写成默认值（防止浏览器刷新时恢复旧的表单状态），
   // 再由 rebuild() 从控件读取并渲染，因此控制面板的数值与 Canvas 上实际渲染的 6+1 人始终一致。
-  const DEFAULTS = { view: 'full', ori: 'left', nA: 6, gkA: '1', nB: 6, gkB: '1', showNums: true, showTrails: true };
+  const DEFAULTS = { view: 'half', ori: 'left', nA: 6, gkA: '1', nB: 6, gkB: '1', showNums: true, showTrails: true };
   function initDefaults() {
-    applyView(view.mode, view.ori);    // 视角（模式 + 方向）属于显示偏好，恢复默认时保持不变
+    applyView(DEFAULTS.view, DEFAULTS.ori);   // 默认：半场 · 球门在左（白队 3-3 进攻 vs 蓝队 3-3 防守）
     els.countA.value = DEFAULTS.nA;  els.gkA.value = DEFAULTS.gkA;
     els.countB.value = DEFAULTS.nB;  els.gkB.value = DEFAULTS.gkB;
     els.showNums.checked = DEFAULTS.showNums;     showNumbers = DEFAULTS.showNums;
@@ -2358,7 +3444,7 @@
   }
   els.defaultsBtn.addEventListener('click', () => {
     initDefaults();
-    addEntry('恢复默认', '已恢复默认设置：全场视角，双方各6名场上球员+门将，并清除所有连线、轨迹与待执行指令。', 'sys');
+    addEntry(B('恢复默认', 'Restore Defaults'), B('已恢复默认设置：半场视角（球门在左），白队3-3进攻阵型对蓝队3-3人盯人防守，双方各6名场上球员+门将，并清除所有连线、轨迹与待执行指令。', 'Defaults restored: half-pitch view (goal on the left), White 3-3 attack vs Blue 3-3 man-to-man, 6 field players + goalkeeper per side; all lines, trails and pending commands cleared.'), 'sys');
   });
 
   // ===== 视角控件：模式单选 + 方向任务栏 =====
@@ -2374,7 +3460,7 @@
     appEl.classList.toggle('panel-open', open);
     panelToggle.setAttribute('aria-expanded', String(open));
     panelToggle.querySelector('.ico').textContent = open ? '✕' : '☰';
-    panelToggle.querySelector('.txt').textContent = open ? '收起' : '展开';
+    panelToggle.querySelector('.txt').textContent = open ? L('收起', 'Collapse') : L('展开', 'Expand');
     try { localStorage.setItem('wp-panel-open', open ? '1' : '0'); } catch (e) {}
   }
   panelToggle.addEventListener('click', () => setPanel(!appEl.classList.contains('panel-open')));
@@ -2382,7 +3468,7 @@
     if (e.key === 'Tab' || e.target.matches('input, select, textarea')) return;
     if (e.key === 'm' || e.key === 'M') panelToggle.click();
   });
-  let initialOpen = window.innerWidth > 768;      // 手机上默认收起，不遮挡场地
+  let initialOpen = false;                        // 极简入门：第一次打开时面板默认收起（之后记住用户自己的选择）
   try { const v = localStorage.getItem('wp-panel-open'); if (v !== null) initialOpen = v === '1'; } catch (e) {}
   setPanel(initialOpen);
 
@@ -2391,9 +3477,10 @@
   const closeIfMobile = () => { if (MOBILE_Q.matches) setPanel(false); };
   document.getElementById('sheetClose').addEventListener('click', () => setPanel(false));
   document.getElementById('scrim').addEventListener('click', () => setPanel(false));
+  document.querySelectorAll('.formation-bar button').forEach(b => b.addEventListener('click', closeIfMobile));
   scnButtons.forEach(b => b.addEventListener('click', closeIfMobile));        // 点一键战术后收起面板，直接看动画
   document.querySelectorAll('#quick button').forEach(b => b.addEventListener('click', () => {
-    els.cmdInput.value = b.dataset.cmd;
+    els.cmdInput.value = b.textContent.trim();             // 按钮上显示的就是当前语言的指令（中文或英文）
     submitCommand();
     closeIfMobile();
   }));
@@ -2417,7 +3504,7 @@
 
   // 手机上手风琴默认只展开“文字战术指令”（含快捷指令按钮），其余收起，抽屉不至于太长
   if (window.innerWidth <= 768) {
-    document.querySelectorAll('details.sec').forEach((d, i) => { d.open = (i === 1); });
+    document.querySelectorAll('details.sec').forEach((d, i) => { d.open = (i === 2); });
   }
 
   // 竖屏手机：提示“请横屏体验更佳”
@@ -2453,8 +3540,215 @@
   if (window.ResizeObserver) new ResizeObserver(refit).observe(canvas.parentElement);
   else window.addEventListener('resize', refit);
 
+  // =====================================================================
+  //                 界面文字：中英文字典 + updateUILanguage()
+  // =====================================================================
+  // 页面里写死的文字（按钮、分类名、提示语、占位符、悬停说明、无障碍标签、安装弹窗……）以中文为键、英文为值。
+  // collectI18N() 在启动时遍历一次 DOM，记下所有含汉字的文本节点和 placeholder / title / aria-label / alt 属性的中文原文；
+  // updateUILanguage() 再按 currentLang 把它们整体改写成对应语言（中文 = 还原原文），不重建 DOM，所以不会丢失输入框内容、勾选状态和事件。
+  // 含 <b> / <kbd> 的整段说明用 data-i18n-html + I18N.html；运行时动态生成的文字（讲解、提示、报错）走 L() / B()。
+  const I18N = {
+    en: {
+      '🤽 水球战术模拟器': '🤽 Water Polo Tactics Simulator',
+      '安装手机/平板 App': 'Install on Phone / Tablet',
+      '添加到主屏幕，全屏使用，断网也能打开': 'Add to your home screen — full-screen and works offline',
+      '🤖 安卓 Android': '🤖 Android',
+      '🍎 苹果 iOS': '🍎 Apple iOS',
+      '你的设备': 'Your device',
+      '✅ 你现在已经是以 App 方式运行了，无需再安装。': '✅ You are already running as an app — no need to install.',
+      '新标签页': 'New tab', '书签': 'Bookmarks', '安装应用 / 添加到主屏幕': 'Install app / Add to Home screen',
+      '分享…': 'Share…', '设置': 'Settings',
+      '⚡ 一键安装（当前浏览器支持）': '⚡ One-tap install (supported by this browser)',
+      '不同品牌的浏览器菜单文字可能略有差异；如果看不到“安装应用”，请改用 Chrome 打开本页。': 'Menu wording differs between browsers; if you cannot see "Install app", open this page in Chrome.',
+      '拷贝': 'Copy', '添加到阅读列表': 'Add to Reading List', '添加到主屏幕': 'Add to Home Screen', '标记': 'Markup',
+      '请横屏体验更佳': 'Landscape works better',
+      '水球场地是横向长方形，横屏时可以看到更大的场地。也可以继续竖屏使用：切换为半场模式并让球门在上方。': 'A water polo pitch is a wide rectangle, so landscape shows a bigger pitch. You can also stay in portrait: switch to half-pitch mode with the goal on top.',
+      '竖屏使用（半场 · 球门在上）': 'Stay in portrait (half pitch · goal on top)',
+      '我知道了': 'Got it',
+      '🎛️ 控制面板': '🎛️ Control Panel',
+      '✕ 关闭': '✕ Close',
+      '系统设置 / Settings': 'Settings',
+      '语言 / Language': 'Language',
+      '显示区域标注 / Show Zone Labels': 'Show Zone Labels',
+      '视角与人数': 'View & Players',
+      '显示模式': 'Display Mode',
+      '全景模式': 'Full Pitch', '半场模式': 'Half Pitch',
+      '方向选择（球门位置）': 'Direction (goal position)',
+      '← 左': '← Left', '→ 右': '→ Right', '↑ 上': '↑ Top', '↓ 下': '↓ Bottom',
+      '白队': 'White Team', '蓝队': 'Blue Team',
+      '场上球员（3–7）': 'Field players (3–7)',
+      '门将': 'Goalkeeper', '有门将': 'With goalkeeper', '无门将': 'No goalkeeper',
+      '显示球员号码': 'Show player numbers',
+      '重置站位': 'Reset Positions', '恢复默认 6+1': 'Restore Default 6+1',
+      '文字战术指令': 'Text Commands',
+      '白队变阵4-2': 'White Team Formation 4-2',
+      '蓝队收缩M-drop': 'Blue Team M-drop',
+      '白队变阵3-3': 'White Team Formation 3-3',
+      '蓝队3-3人盯人': 'Blue Team 3-3 Man-to-Man',
+      '白队5号移动到中锋位置': 'White 5 move to center',
+      '蓝队3号移动到左外围': 'Blue 3 move to left perimeter',
+      '白队1号退防到左翼': 'White 1 retreat to left wing',
+      '白队全员压上': 'White all push up',
+      '蓝队2号拿球': 'Blue 2 take the ball',
+      '白队水球传给4号': 'White ball pass to 4',
+      '白队射门': 'White shoot', '蓝队射门': 'Blue shoot',
+      '执行': 'Execute',
+      '更多示例指令（点击填入输入框）': 'More example commands (click to fill the input)',
+      '白队2号从侧翼游向中间绕过蓝队中锋，然后游向1号位置；同时白队1号向2号初始位置交叉补位': "White 2 swim from the wing to the middle around Blue's center forward, then swim to 1's position; at the same time White 1 cross-swap to 2's initial position",
+      '白队3号移动到6米线左侧': 'White 3 move to the left side of the 6m line',
+      '蓝队2号移动到禁区': 'Blue 2 move to the goal area',
+      '一键战术': 'One-Click Tactics',
+      '6打5 外围远射': '6 on 5 Perimeter Shot', '4打3 快速反击': '4 on 3 Fast Break',
+      '撤门将全线压上': 'All-Out Attack (Pulled GK)', '交叉换位': 'Cross-Swap',
+      '点击后自动切换到全场视角、设置场景并播放，讲解同步显示在下方“战术讲解”。': 'Click to switch to full-pitch view, set up the scene and play it; the commentary appears in "Analysis" below.',
+      '白队进攻阵型': 'White Attack Formation',
+      '白队：3-3 阵型': 'White: 3-3 Formation', '白队：4-2 阵型': 'White: 4-2 Formation',
+      '蓝队防守阵型': 'Blue Defense Formation',
+      '蓝队：3-3 人盯人': 'Blue: 3-3 Man-to-Man', '蓝队：M-Drop 防守': 'Blue: M-Drop Defense',
+      '阵型坐标以“球门在左的半场”为基准（X：离球门线的距离，Y：0–20 米宽度）。切换视角 / 方向时自动镜像旋转；全景模式下摆在白队进攻的右侧球门前。号码对应：中锋 / CK 防守者 = 5 号，边锋 = 1、2 号，外围 = 3、4 号，顶部 = 6 号，第 7 人（如有）居中策应。':
+        'Formation coordinates are defined for the "half pitch with the goal on the left" (X: distance from the goal line, Y: 0–20 m width). They mirror / rotate automatically when the view or direction changes; in full-pitch mode they are placed in front of the right-hand goal that White attacks. Numbers: center forward / CK defender = #5, wings = #1 and #2, perimeter = #3 and #4, top = #6, a 7th player (if any) links in the middle.',
+      '轨迹控制': 'Trails & Lines',
+      '操作模式': 'Operation Mode',
+      '📱 安装 App (Install App)': '📱 Install App',
+      '绘图工具': 'Drawing tools',
+      '按住拖动工具栏（靠近屏幕边缘会自动吸附并折叠）': 'Drag to move the toolbar (it snaps to screen edges and folds away)',
+      '按住拖动工具栏': 'Drag to move the toolbar',
+      '切换横向 / 纵向排列': 'Toggle horizontal / vertical layout',
+      '❓ 使用说明 (Help & Guide)': '❓ Help & Guide',
+      '使用说明': 'Help & Guide',
+      '👋 欢迎使用水球战术板': '👋 Welcome to the Water Polo Tactics Board',
+      '1 分钟上手：拖一拖、画一画、点播放': 'Get started in a minute: drag, draw, press play',
+      '基础操作': 'Basics',
+      '选择拖拽模式下，直接按住球员或水球即可移动位置。': 'In Select & Drag mode, press and hold a player or the ball to move it.',
+      '快速画线': 'Quick Route Drawing',
+      '点击悬浮工具栏的画笔，按住鼠标/手指在场上画曲线。松开后选择这条轨迹属于谁，再点“播放战术”，球员就会沿轨迹跑动。': 'Tap the pencil on the floating toolbar, then drag with the mouse or your finger to draw a curve on the pitch. When you let go, choose whose route it is, then press "Play Tactic" and the player runs along it.',
+      '战术输入': 'Tactic Commands',
+      '在面板的输入框里输入文字（如“白队变阵4-2”或“蓝队收缩M-drop”），点击执行，全场自动播放战术动画并配有文字解析。': 'Type a command in the panel (e.g. "White 4-2 formation" or "Blue M-drop collapse") and run it. The whole pitch animates the tactic with a text explanation.',
+      '视角切换': 'Switching Views',
+      '在面板的“视角与人数”里选择半场/全场和上、下、左、右方向，满足不同屏幕和复盘需求。': 'In the panel\'s "View & Players" section, choose half or full pitch and the up / down / left / right direction to suit your screen or a replay review.',
+      '安装 App': 'Install as an App',
+      '在手机上通过浏览器菜单选择“添加到主屏幕”，即可像原生 App 一样全屏、离线使用。': 'On your phone, use the browser menu and choose "Add to Home Screen" to use it full-screen and offline like a native app.',
+      '查看安装步骤': 'Show install steps',
+      '快捷键：V 拖拽 · D 画线 · C 连线 · E 橡皮擦 · Ctrl+Z 撤销 · M 展开/收起面板': 'Shortcuts: V drag · D draw · C connect · E eraser · Ctrl+Z undo · M toggle panel',
+      '我知道了': 'Got it',
+      '连线（传球）': 'Connect (pass)',
+      '橡皮擦': 'Eraser',
+      '绘图工具': 'Drawing tools',
+      '拖拽模式（V）：选中并移动球员 / 水球': 'Drag mode (V): select and move players / ball',
+      '画线模式（D）：自由绘制跑动轨迹': 'Draw mode (D): freehand run routes',
+      '连线模式（C）：点击 A 再点击 B，生成传球直线': 'Connect mode (C): click A then B for a straight pass line',
+      '橡皮擦（E）：点击删除单条轨迹或连线': 'Eraser (E): click to delete a single route or line',
+      '撤销上一步（Ctrl+Z）': 'Undo (Ctrl+Z)',
+      '清空画板：删除所有轨迹和连线': 'Clear board: delete all routes and lines',
+      '选择与拖拽': 'Select & Drag',
+      '战术画线': 'Draw Routes',
+      '连线模式（点A→点B，传球/射门）': 'Connect Mode (A → B: pass / shot)',
+      '▶ 播放战术': '▶ Play Tactic',
+      '清除所有画线': 'Clear Drawn Routes',
+      '这条路线属于哪个球员？': 'Which player runs this route?',
+      '放弃这条线': 'Discard this line',
+      '显示跑动轨迹': 'Show run trails',
+      '清除所有连线': 'Clear All Lines', '清除跑动轨迹': 'Clear Trails',
+      '战术讲解': 'Analysis',
+      '动画播放时自动生成': 'Generated automatically during playback',
+      '清空': 'Clear',
+      // —— 属性：aria-label / title / placeholder ——
+      '关闭': 'Close', '选择设备系统': 'Choose your device',
+      '安卓 Chrome 菜单示意图': 'Android Chrome menu illustration', 'iOS 分享菜单示意图': 'iOS share menu illustration',
+      '横屏提示': 'Landscape tip',
+      '展开/收起控制面板（快捷键 M）': 'Expand / collapse the control panel (shortcut: M)',
+      '控制面板': 'Control panel', '关闭面板': 'Close panel',
+      '方向选择': 'Direction', '快捷指令': 'Quick commands',
+      '或手动输入，Enter 执行。例如：白队2号从侧翼游向中间绕过蓝队中锋，然后游向1号位置；同时白队1号向2号初始位置交叉补位':
+        "Or type a command and press Enter. Example: White 2 swim from the wing to the middle around Blue's center forward, then swim to 1's position; at the same time White 1 cross-swap to 2's initial position",
+      '白队6名场上球员+门将 vs 蓝队5名场上球员+门将': 'White 6 field players + GK vs Blue 5 field players + GK',
+      '白队4名场上球员+门将 vs 蓝队3名场上球员+门将': 'White 4 field players + GK vs Blue 3 field players + GK',
+      '白队7名场上球员无门将 vs 蓝队6名场上球员+门将': 'White 7 field players, no GK vs Blue 6 field players + GK',
+      '自动生成两名白队球员，演示弧线绕行与交叉换位，并保留跑动轨迹': 'Creates two White players to demo a curved run around an obstacle and a cross-swap, keeping the run trails',
+      '经典阵地战：中锋 + 两边锋 + 两外围 + 顶部': 'Classic set offense: center forward + two wings + two perimeter players + top',
+      '多打少（6打5）：两侧二人组 + 中锋 + 顶部': 'Extra-man offense (6 on 5): a two-man group on each side + center forward + top',
+      '3-3 人盯人：贴身防守中锋，两翼与外围各自盯防': '3-3 man-to-man: tight on the center forward, wings and perimeter each marked',
+      'M-Drop 收缩防守：向禁区收缩，应对强力中锋': 'M-Drop collapse: sink toward the goal area to handle a strong center forward',
+    },
+    html: {
+      imInApp: '⚠️ It looks like you are in the in-app browser of WeChat / QQ etc., where installing is not possible. Tap <b>⋯</b> or the share menu at the top right and choose "<b>Open in browser</b>" (Safari on iPhone / iPad, Chrome on Android), then follow the steps below.',
+      leadAndroid: 'If you use an <b>Android phone or tablet</b> (<b>Chrome</b> recommended), follow these steps:',
+      leadIOS: 'If you use an <b>iPhone or iPad</b>, please open this page in the built-in <b>Safari</b> browser.',
+      a1: 'Tap the <kbd>⋮</kbd> (three dots) menu at the top right of the browser.',
+      a2: 'Choose <kbd>Install app</kbd> or <kbd>Add to Home screen</kbd>.',
+      a3: 'After confirming, you will find the <b>tactics board icon</b> on your home screen.',
+      i1a: 'Tap the <kbd>Share</kbd> button at the bottom center of the screen (',
+      i1b: ' an icon of a box with an upward arrow). On iPad the Share button is at the top right of the screen.',
+      i2: 'Scroll down the menu, then find and tap <kbd>Add to Home Screen</kbd>.',
+      i3: 'Tap <kbd>Add</kbd> at the top right. The <b>App</b> will appear on your home screen.',
+      tipIOS: 'Note: in-app browsers such as WeChat or QQ cannot install directly — tap the top right and choose "<b>Open in browser</b>".',
+    },
+  };
+
+  const CJK = /[㐀-鿿＀-￯]/;
+  const norm = s => s.replace(/\s+/g, ' ').trim();
+  const i18nText = [], i18nAttr = [], i18nHtml = [];
+  function collectI18N() {
+    const root = document.body;
+    root.querySelectorAll('[data-i18n-html]').forEach(el => i18nHtml.push({ el, zh: el.innerHTML, key: el.dataset.i18nHtml }));
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        const p = n.parentElement;
+        if (!p || !CJK.test(n.nodeValue)) return NodeFilter.FILTER_REJECT;
+        if (p.closest('script, style, [data-i18n-skip], [data-i18n-html]')) return NodeFilter.FILTER_REJECT;   // 动态文字 / 整段 HTML 另行处理
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    for (let n; (n = walker.nextNode());) i18nText.push({ node: n, zh: n.nodeValue });
+    root.querySelectorAll('[placeholder], [title], [aria-label], [alt]').forEach(el => {
+      ['placeholder', 'title', 'aria-label', 'alt'].forEach(a => {
+        if (el.hasAttribute(a) && CJK.test(el.getAttribute(a))) i18nAttr.push({ el, attr: a, zh: el.getAttribute(a) });
+      });
+    });
+  }
+  const trZh = zh => {                       // 中文原文 → 当前语言（保留前后空白；字典里没有的原样保留）
+    if (currentLang === 'zh') return zh;
+    const e = I18N.en[norm(zh)];
+    return e === undefined ? zh : zh.match(/^\s*/)[0] + e + zh.match(/\s*$/)[0];
+  };
+
+  const langSel = document.getElementById('langSel');
+  const zoneChk = document.getElementById('showZoneLabels');
+
+  // 遍历 DOM 更新全部文字；同时刷新所有“动态文字”（视角标签、提示条、面板按钮、讲解记录、画布标注）
+  function updateUILanguage() {
+    const en = currentLang === 'en';
+    document.documentElement.lang = en ? 'en' : 'zh-CN';
+    document.title = en ? 'Water Polo Tactics Simulator' : '水球战术模拟器';
+    i18nText.forEach(r => { r.node.nodeValue = trZh(r.zh); });
+    i18nAttr.forEach(r => { r.el.setAttribute(r.attr, currentLang === 'zh' ? r.zh : (I18N.en[norm(r.zh)] ?? r.zh)); });
+    i18nHtml.forEach(r => { r.el.innerHTML = (en && I18N.html[r.key]) ? I18N.html[r.key] : r.zh; });
+    langSel.value = currentLang;
+    syncViewUI();
+    updateHint();
+    setPanel(appEl.classList.contains('panel-open'));
+    relocalizeLog();
+    window.dispatchEvent(new CustomEvent('wp-lang-change', { detail: currentLang }));
+    requestRender();                                     // 画布上的区域标注随语言重绘
+  }
+  langSel.addEventListener('change', () => {
+    currentLang = langSel.value === 'en' ? 'en' : 'zh';
+    try { localStorage.setItem(LANG_KEY, currentLang); } catch (e) {}
+    updateUILanguage();
+  });
+  zoneChk.checked = showZoneLabels;
+  zoneChk.addEventListener('change', () => {
+    showZoneLabels = zoneChk.checked;
+    try { localStorage.setItem(ZONE_KEY, showZoneLabels ? '1' : '0'); } catch (e) {}
+    requestRender();
+  });
+
+  collectI18N();
+  updateUILanguage();                          // 按已保存的语言（默认中文）初始化全部文字
   initDefaults();
-  addEntry('使用说明', '默认全场视角：双方各6名场上球员+门将（号码1–6，门将红帽无数字）；蓝队为3-3防守阵型，白队在外围准备进攻。右侧面板“视角与人数”里可切换到半场（左侧防守半场），球员会自动重新分布到左半场。点击“经典战术”按钮可一键播放整套战术（会自动切回全场）；也可以在“文字战术指令”里输入战术指令，支持多路点、“绕过…”和“同时”，球员会沿平滑曲线游动并留下虚线轨迹，这里会同步生成战术讲解。', 'sys');
+  addEntry(B('使用说明', 'How to Use'), B(
+    '默认半场视角（球门在左）：白队3-3进攻阵型对蓝队3-3人盯人防守，双方各6名场上球员+门将（号码1–6，门将红帽无数字）。可以直接输入“白队变阵4-2”“蓝队收缩M-drop”切换阵型，或“白队5号移动到中锋位置”“蓝队3号移动到左外围”“白队1号退防到左翼”按区域跑位；也支持多路点、“绕过…”和“同时”。点“一键战术”里的按钮会自动切到全景模式播放整套战术。这里会同步生成战术讲解。',
+    'Default half-pitch view (goal on the left): White 3-3 attack vs Blue 3-3 man-to-man, each side with 6 field players + a goalkeeper (numbers 1–6; the goalkeeper wears a red cap with no number). Type "White 4-2 formation" or "Blue M-drop" to change formations, or run to zones with "White 5 move to center", "Blue 3 move to left perimeter" and "White 1 retreat to left wing"; multi-waypoint paths, "around …" and "at the same time" are also supported. The buttons under One-Click Tactics switch to full-pitch view and play a whole sequence. The commentary is generated here in sync.'), 'sys');
 })();
 </script>
 <script>
@@ -2548,8 +3842,153 @@
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });
-    // 以独立 App 方式运行时，按钮文案改成“已安装”提示（入口仍然保留）
-    if (standalone) openBtn.textContent = '✅ 已作为 App 运行';
+    // 常驻入口按钮的文案：中 / 英随语言切换；以独立 App 方式运行时改成“已安装”提示（入口仍然保留）
+    const refreshInstallBtn = () => {
+      const en = document.documentElement.lang === 'en';
+      openBtn.textContent = standalone ? (en ? '✅ Running as an App' : '✅ 已作为 App 运行')
+                                       : (en ? '📱 Install App' : '📱 安装 App (Install App)');
+    };
+    refreshInstallBtn();
+    window.addEventListener('wp-lang-change', refreshInstallBtn);
+  })();
+</script>
+<script>
+  // ===== 使用说明 / Help：入口按钮 + 弹窗 + 首次访问自动弹出（localStorage 标记）=====
+  (() => {
+    const $ = id => document.getElementById(id);
+    const modal = $('helpModal'), okBtn = $('hmOk');
+    const KEY = 'wp-help-seen';
+    let lastFocus = null;
+    const seen = () => { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } };
+    const markSeen = () => { try { localStorage.setItem(KEY, '1'); } catch (e) {} };
+    function openHelp() {
+      if (modal.classList.contains('open')) return;
+      lastFocus = document.activeElement;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      setTimeout(() => okBtn.focus(), 50);
+    }
+    function closeHelp() {
+      if (!modal.classList.contains('open')) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      markSeen();                                               // 关闭后记录：以后不再自动弹出（仍可随时手动打开）
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    $('helpBtn').addEventListener('click', () => { openHelp(); if (window.matchMedia('(max-width: 768px)').matches) $('sheetClose').click(); });
+    $('tbHelp').addEventListener('click', openHelp);
+    $('hmClose').addEventListener('click', closeHelp);
+    okBtn.addEventListener('click', closeHelp);
+    modal.addEventListener('click', e => { if (e.target === modal) closeHelp(); });
+    $('hmInstall').addEventListener('click', () => { closeHelp(); setTimeout(() => $('installBtn').click(), 260); });
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+    modal.addEventListener('keydown', e => {                    // 焦点陷阱
+      if (e.key !== 'Tab') return;
+      const f = [...modal.querySelectorAll('button:not([disabled])')].filter(el => el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    // 首次访问：页面加载完毕后自动弹一次；若此时正显示“请横屏”提示，则等它关闭后再弹
+    const tipUp = () => document.getElementById('rotateTip').classList.contains('show');
+    function autoOpen() { if (!seen() && !modal.classList.contains('open')) { if (tipUp()) return false; openHelp(); } return true; }
+    const start = () => setTimeout(() => { autoOpen(); }, 500);
+    if (document.readyState === 'complete') start(); else window.addEventListener('load', start);
+    ['tipDismiss', 'tipVertical'].forEach(id => $(id).addEventListener('click', () => setTimeout(autoOpen, 350)));
+  })();
+</script>
+<script>
+  // ===== 悬浮工具栏：拖动 · 边缘吸附 · 自动折叠 · 横纵切换（纯 Pointer Events，鼠标 / 触屏通用）=====
+  (() => {
+    const tb = document.getElementById('toolbar');
+    const KEY = 'wp-toolbar', M = 6, SNAP = 28;
+    const IDLE_MS = () => (window.matchMedia('(max-width: 768px)').matches ? 2500 : 3500);
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const isPhone = window.matchMedia('(max-width: 768px)').matches;
+    // 默认：电脑上悬浮在左侧居中（不折叠，仅闲置时变半透明）；手机上默认贴左边并折叠，不挡手
+    let st = isPhone ? { ori: 'v', edge: 'left', x: M, y: null } : { ori: 'v', edge: null, x: 12, y: null };
+    try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && (j.ori === 'v' || j.ori === 'h')) st = Object.assign(st, j); } catch (e) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ ori: st.ori, edge: st.edge, x: Math.round(st.x), y: Math.round(st.y) })); } catch (e) {} };
+
+    // 按当前方向 / 吸附边计算位置（并保证不出屏幕）
+    function place() {
+      tb.classList.toggle('h', st.ori === 'h');
+      tb.setAttribute('aria-orientation', st.ori === 'h' ? 'horizontal' : 'vertical');
+      ['left', 'right', 'top', 'bottom', 'none'].forEach(k => tb.classList.toggle('edge-' + k, (st.edge || 'none') === k));
+      const vw = window.innerWidth, vh = window.innerHeight, w = tb.offsetWidth, h = tb.offsetHeight;
+      let x = st.x == null ? 12 : st.x, y = st.y == null ? (vh - h) / 2 : st.y;
+      x = clamp(x, M, Math.max(M, vw - w - M)); y = clamp(y, M, Math.max(M, vh - h - M));
+      if (st.edge === 'left') x = M; else if (st.edge === 'right') x = vw - w - M;
+      else if (st.edge === 'top') y = M; else if (st.edge === 'bottom') y = vh - h - M;
+      st.x = x; st.y = y;
+      tb.style.left = x + 'px'; tb.style.top = y + 'px';
+    }
+    window.wpToolbarRelayout = place;
+
+    // ---- 闲置折叠 / 唤醒 ----
+    let timer = null, hovering = false, drag = null;
+    function schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (hovering || drag) return schedule();
+        tb.classList.add('idle');
+        if (st.edge) tb.classList.add('peek');           // 贴边：折叠成一条小把手（类似 QQ / 微信侧边栏）
+      }, IDLE_MS());
+    }
+    function wake() { tb.classList.remove('idle', 'peek'); schedule(); }
+    tb.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { hovering = true; wake(); } });
+    tb.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { hovering = false; schedule(); } });
+    tb.addEventListener('focusin', wake);
+    tb.addEventListener('click', wake);
+
+    // ---- 拖动：按住工具栏的把手 / 空白处 ----
+    tb.addEventListener('pointerdown', e => {
+      wake();
+      if (e.button !== undefined && e.button > 0) return;
+      if (e.target.closest('.tb')) return;                // 按钮自己处理点击
+      drag = { pid: e.pointerId, dx: e.clientX - tb.offsetLeft, dy: e.clientY - tb.offsetTop, moved: false };
+      tb.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    tb.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      if (!drag.moved) {
+        if (Math.hypot(e.clientX - tb.offsetLeft - drag.dx, e.clientY - tb.offsetTop - drag.dy) < 4) return;
+        drag.moved = true;
+        tb.classList.add('dragging'); tb.classList.remove('peek', 'idle');
+        ['left', 'right', 'top', 'bottom'].forEach(k => tb.classList.remove('edge-' + k));
+      }
+      const vw = window.innerWidth, vh = window.innerHeight, w = tb.offsetWidth, h = tb.offsetHeight;
+      tb.style.left = clamp(e.clientX - drag.dx, 0, vw - w) + 'px';
+      tb.style.top = clamp(e.clientY - drag.dy, 0, vh - h) + 'px';
+    });
+    function endDrag(e) {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const moved = drag.moved; drag = null;
+      if (tb.hasPointerCapture(e.pointerId)) tb.releasePointerCapture(e.pointerId);
+      tb.classList.remove('dragging');
+      if (!moved) return;
+      // 松手后：离哪条屏幕边 ≤ SNAP 像素就吸附过去；吸附时自动选择顺手的排列（左右边 = 纵向，上下边 = 横向）
+      const r = tb.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+      const d = { left: r.left, right: vw - r.right, top: r.top, bottom: vh - r.bottom };
+      const edge = Object.keys(d).reduce((a, b) => (d[a] <= d[b] ? a : b));
+      st.x = r.left; st.y = r.top;
+      if (d[edge] <= SNAP) { st.edge = edge; st.ori = (edge === 'left' || edge === 'right') ? 'v' : 'h'; }
+      else st.edge = null;
+      place(); save(); schedule();
+    }
+    tb.addEventListener('pointerup', endDrag);
+    tb.addEventListener('pointercancel', endDrag);
+    tb.addEventListener('contextmenu', e => e.preventDefault());
+
+    // ---- 横 / 纵 切换 ----
+    document.getElementById('tbRot').addEventListener('click', () => { st.ori = st.ori === 'h' ? 'v' : 'h'; place(); save(); });
+
+    window.addEventListener('resize', place);
+    window.addEventListener('orientationchange', () => setTimeout(place, 200));
+    place();
+    schedule();
   })();
 </script>
 </body>
